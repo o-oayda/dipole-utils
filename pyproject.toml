@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "dipole-utils"
+version = "0.1.0"
+description = "Utilities for fitting dipoles and higher order harmonics to healpy maps."
+authors = ["Oliver Oayda <oaydaoliver@gmail.com>"]
+readme = "README.md"
+packages = [{ include = "dipoleutils" }]
+
+[tool.poetry.dependencies]
+python = ">=3.12"
+numpy = "<2.0.0"
+astropy = ">=7.1.0,<8.0.0"
+matplotlib = "==3.7.5"
+scipy = ">=1.16.0,<2.0.0"
+healpy = ">=1.18.1,<2.0.0"
+ultranest = ">=4.4.0,<5.0.0"
+corner = ">=2.2.3,<3.0.0"
+
+
+[tool.poetry.group.test.dependencies]
+pytest = ">=7.0.0,<8.0.0"
+pytest-cov = ">=4.0.0,<5.0.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
