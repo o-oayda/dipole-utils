@@ -279,7 +279,7 @@ class TestDipoleUnit:
     def test_error_handling_invalid_likelihood(self):
         """Test that invalid likelihood raises appropriate error."""
         with pytest.raises(Exception):
-            Dipole(density_map=self.mock_density_map, likelihood='invalid')
+            Dipole(density_map=self.mock_density_map, likelihood='invalid') # type: ignore
             
     def test_error_handling_invalid_density_map(self):
         """Test error handling for invalid density map."""
