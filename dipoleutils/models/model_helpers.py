@@ -110,8 +110,10 @@ class MapModelMixin:
         '''
         if prior is None:
             self._prior = Prior(choose_prior=default_prior)
+            self.prior_is_custom = False
         else:
             self._prior = prior
+            self.prior_is_custom = True
 
     def _parse_likelihood_choice(self,
             likelihood: Literal['point', 'poisson']
@@ -129,18 +131,30 @@ class MapModelMixin:
         '''
         self.likelihood = likelihood
 
-        if self.likelihood == 'point':
-            self._prior.remove_prior(prior_index=0)
-        elif self.likelihood == 'poisson':
-            self._prior.change_prior(
-                prior_index=0,
-                new_prior=[
-                    'Uniform',
-                    0.75 * self.mean_density,
-                    1.25 * self.mean_density
-                ]
-            )
+        if not self.prior_is_custom:
+            if self.likelihood == 'point':
+                # remove Nbar parameter from the default dipole priors
+                self._prior.remove_prior(prior_index=0)
+            elif self.likelihood == 'poisson':
+                self._prior.change_prior(
+                    prior_index=0,
+                    new_prior=[
+                        'Uniform',
+                        0.75 * self.mean_density,
+                        1.25 * self.mean_density
+                    ]
+                )
+            else:
+                raise Exception(
+                    f'Likelihood choice ({self.likelihood}) not recognised.'
+                )
         else:
-            raise Exception(
-                f'Likelihood choice ({self.likelihood}) not recognised.'
-            )
+            # check that custom priors have the expected number of dimensions
+            if self.likelihood == 'point':
+                assert self._prior.ndim == 3
+            elif self.likelihood == 'poisson':
+                assert self._prior.ndim == 4
+            else:
+                raise Exception(
+                    f'Likelihood choice ({self.likelihood}) not recognised.'
+                )

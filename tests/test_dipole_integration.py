@@ -100,7 +100,7 @@ class TestDipoleNestSamplingIntegration:
         dipole_model.run_nested_sampling(
             reactive_sampler_kwargs={
                 'log_dir': 'test_ultranest_logs',
-                'resume': False
+                'resume': 'overwrite'
             },
             run_kwargs={
                 'min_num_live_points': 50,  # Minimal for speed
@@ -193,7 +193,7 @@ class TestDipoleNestSamplingIntegration:
         dipole_model.run_nested_sampling(
             reactive_sampler_kwargs={
                 'log_dir': 'test_ultranest_logs_point',
-                'resume': False
+                'resume': 'overwrite'
             },
             run_kwargs={
                 'min_num_live_points': 50,
@@ -251,7 +251,7 @@ class TestDipoleNestSamplingIntegration:
             dipole_model.run_nested_sampling(
                 reactive_sampler_kwargs={
                     'log_dir': 'test_ultranest_logs_custom',
-                    'resume': False
+                    'resume': 'overwrite'
                 },
                 run_kwargs={
                     'min_num_live_points': 50,
@@ -323,7 +323,7 @@ class TestDipoleNestSamplingIntegration:
         dipole_model.run_nested_sampling(
             reactive_sampler_kwargs={
                 'log_dir': 'test_ultranest_logs_fixed',
-                'resume': False
+                'resume': 'overwrite'
             },
             run_kwargs={
                 'min_num_live_points': 50,
@@ -355,6 +355,9 @@ class TestDipoleNestSamplingIntegration:
         # Generate mock data
         mock_density_map = self.generate_mock_density_map()
         
+        # cast to array of floats to allow assigning masked pixel to np.nan
+        mock_density_map = mock_density_map.astype('float64')
+        
         # Mask out some pixels (set to NaN)
         mask = np.random.random(self.npix) < 0.3  # Mask ~30% of pixels
         mock_density_map[mask] = np.nan
@@ -374,7 +377,7 @@ class TestDipoleNestSamplingIntegration:
         dipole_model.run_nested_sampling(
             reactive_sampler_kwargs={
                 'log_dir': 'test_ultranest_logs_masked',
-                'resume': False
+                'resume': 'overwrite'
             },
             run_kwargs={
                 'min_num_live_points': 50,
@@ -416,7 +419,7 @@ class TestDipoleNestSamplingIntegration:
         dipole_model.run_nested_sampling(
             reactive_sampler_kwargs={
                 'log_dir': 'test_ultranest_logs_attrs',
-                'resume': False
+                'resume': 'overwrite'
             },
             run_kwargs={
                 'min_num_live_points': 50,

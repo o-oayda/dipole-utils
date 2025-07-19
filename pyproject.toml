@@ -15,6 +15,7 @@ scipy = ">=1.16.0,<2.0.0"
 healpy = ">=1.18.1,<2.0.0"
 ultranest = ">=4.4.0,<5.0.0"
 corner = ">=2.2.3,<3.0.0"
+h5py = "^3.14.0"
 
 
 [tool.poetry.group.test.dependencies]
