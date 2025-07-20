@@ -18,6 +18,7 @@ class CatalogueToMap:
         self.catalogue = catalogue
         self.coordinate_systems = {}
         self.coordinate_columns = {}
+        self.map_coordinate_system = None
         self.parser = CoordinateSystemParser()
         self._parse_angular_coordinates()
     
@@ -162,6 +163,7 @@ class CatalogueToMap:
             system_to_use = coordinate_system
         
         # Get coordinate columns
+        self.map_coordinate_system = system_to_use
         coords = self.get_coordinates(system_to_use)
         if coords is None:
             raise ValueError(
@@ -176,7 +178,17 @@ class CatalogueToMap:
             f"Binning density map in {system_to_use} coordinates: "
             f"{azimuthal_col}, {polar_col}"
         )
-        return angles_to_density_map(
+        self.density_map = angles_to_density_map(
             azimuthal_angles, polar_angles,
             lonlat=True, nest=nest, nside=nside
         )
+        return self.density_map
+    
+    def get_map_coordinate_system(self) -> str | None:
+        """
+        Returns the map coordinate system associated with the generated
+        density map.
+        :return: The map coordinate system as a string, or None if no map has
+        been generated.
+        """
+        return self.map_coordinate_system

@@ -3,8 +3,8 @@ from numpy.typing import NDArray
 import healpy as hp
 
 def angles_to_density_map(
-        azimuthal_angles: NDArray[np.float_],
-        polar_angles: NDArray[np.float_],
+        azimuthal_angles: NDArray[np.float64],
+        polar_angles: NDArray[np.float64],
         lonlat: bool = True,
         nest: bool = False,
         nside: int = 64
