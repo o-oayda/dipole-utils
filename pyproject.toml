@@ -8,14 +8,14 @@ packages = [{ include = "dipoleutils" }]
 
 [tool.poetry.dependencies]
 python = ">=3.12"
-numpy = "<2.0.0"
 astropy = ">=7.1.0,<8.0.0"
-matplotlib = "==3.7.5"
 scipy = ">=1.16.0,<2.0.0"
 healpy = ">=1.18.1,<2.0.0"
 ultranest = ">=4.4.0,<5.0.0"
 corner = ">=2.2.3,<3.0.0"
 h5py = "^3.14.0"
+matplotlib = "^3.10.3"
+numpy = "^2.3.1"
 
 
 [tool.poetry.group.test.dependencies]

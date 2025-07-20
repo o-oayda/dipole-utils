@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 class Prior:
     def __init__(self,
-            choose_prior: Dict[str, list[str | float | np.floating]] | str,
+            choose_prior: Dict[str, list[str | float | np.float64]] | str,
     ):
         '''
         Class for constructing n-dimensional prior distribution functions.
@@ -61,7 +61,7 @@ class Prior:
     
     def change_prior(self,
             prior_index: int,
-            new_prior: list[str | (float | np.float_)] 
+            new_prior: list[str | (float | np.floating)] 
         ) -> None:
         '''
         Change the sampling distribution for one of the parameters.
@@ -156,11 +156,11 @@ class Prior:
         of callable functions, to be used by this class's `transform` method.
         These functions are stored in the `prior_transforms` attribute.
         '''
-        self.parameter_names = list(self.prior_dict.keys())
+        self.parameter_names = self.get_parameter_names()
         self.ndim = len(self.parameter_names)
         self.prior_transforms = []
         
-        for value in self.prior_dict.values():
+        for value in self.get_prior_values():
             
             distribution = value[0]
             assert type(distribution) is str, (
@@ -194,6 +194,12 @@ class Prior:
         '''
         self.prior_dict = prior_defaults[self.choose_default]
     
+    def get_parameter_names(self) -> list[str]:
+        return list(self.prior_dict.keys())
+    
+    def get_prior_values(self) -> list[list[str | float | np.float64]]:
+        return list(self.prior_dict.values())
+
     def _get_prior_callable(self,
             distribution: str
     ) -> Callable:
@@ -211,8 +217,8 @@ class Prior:
     
     def _construct_callable(self,
             callable_prior_function: Callable,
-            minimum: float | np.float_,
-            maximum: float | np.float_
+            minimum: float | np.floating,
+            maximum: float | np.floating
     ) -> Callable:
         '''
         Make wrapper function to be used when calling this class's `transform`
