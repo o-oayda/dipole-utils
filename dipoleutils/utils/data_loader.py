@@ -386,7 +386,8 @@ class DataLoader:
             for key, path in missing_external_files:
                 print(f"  {key}: {path}")
             raise FileNotFoundError(
-                f"Missing source files for {self.catalogue_name}: {[key for key, _ in missing_external_files]}"
+                f"Missing source files on external drive for {self.catalogue_name}:"
+                f"{[key for key, _ in missing_external_files]}"
             )
         
         # Show status
@@ -484,7 +485,7 @@ class DataLoader:
                 total_mb = total_size / (1024 * 1024)
                 bar = (
                     f"[{'=' * 50}] 100.0% ({total_mb:.1f}/{total_mb:.1f} MB)"
-                    f"Avg: {avg_speed:.1f} MB/s"
+                    f" Avg: {avg_speed:.1f} MB/s"
                 )
                 print(f"\rCopying: {bar}")
             print()
