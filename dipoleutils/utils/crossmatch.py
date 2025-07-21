@@ -223,9 +223,13 @@ class CrossMatch:
         assert self.duplicates_table is not None
         return self.duplicates_table
 
-    def get_crossmatch_table(self) -> Table:
+    def get_crossmatch_table(self, only_valid: bool = False) -> Table:
         assert self.crossmatch_catalogue is not None, 'Execute cross_match first.'
-        return self.crossmatch_catalogue
+        if only_valid:
+            valid_mask = self.crossmatch_catalogue['source_idx_B'] != -1
+            return self.crossmatch_catalogue[valid_mask] # type: ignore
+        else:
+            return self.crossmatch_catalogue
 
     def _determine_source_name_columns(self,
             source_name_A_column: Optional[str],
