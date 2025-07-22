@@ -69,6 +69,83 @@ class CatalogueToMap:
             return coords['azimuthal'], coords['polar']
         return None
     
+    def add_coordinate_system(self, starting_frame: str, target_frame: str) -> None:
+        '''
+        Add a new coordinate system to the catalogue by transforming coordinates
+        from an existing coordinate system. New columns are added to the catalogue
+        with the transformed coordinates.
+        
+        :param starting_frame: The coordinate system to transform from 
+            (e.g., 'equatorial', 'galactic', 'ecliptic').
+        :param target_frame: The coordinate system to transform to
+            (e.g., 'equatorial', 'galactic', 'ecliptic').
+        :raises ValueError: If the starting frame is not available in the catalogue
+            or if the coordinate transformation fails.
+        '''
+        # Import the coordinate transformation function
+        from .physics import change_source_coordinates
+        
+        # Check if starting frame exists in the catalogue
+        if not self.has_coordinate_system(starting_frame):
+            available = ', '.join(self.get_available_systems())
+            raise ValueError(
+                f"Starting coordinate system '{starting_frame}' not available. "
+                f"Available systems: {available}"
+            )
+        
+        # Check if target frame is already present
+        if self.has_coordinate_system(target_frame):
+            print(f"Target coordinate system '{target_frame}' already exists in catalogue.")
+            return
+        
+        # Get the source coordinates
+        source_coords = self.get_coordinates(starting_frame)
+        if source_coords is None:
+            raise ValueError(
+                f"Could not retrieve coordinates for system '{starting_frame}'."
+            )
+        
+        source_azimuthal_col, source_polar_col = source_coords
+        source_azimuthal = np.asarray(self.catalogue[source_azimuthal_col], dtype=np.float64)
+        source_polar = np.asarray(self.catalogue[source_polar_col], dtype=np.float64)
+        
+        # Transform coordinates
+        try:
+            transformed_azimuthal, transformed_polar = change_source_coordinates(
+                source_azimuthal, source_polar, starting_frame, target_frame
+            )
+        except (AssertionError, ValueError) as e:
+            raise ValueError(f"Coordinate transformation failed: {e}")
+        
+        # Get the standard column names for the target coordinate system
+        # Use the first pattern from the coordinate parser patterns
+        target_patterns = self.parser.coordinate_patterns.get(target_frame)
+        if target_patterns is None:
+            raise ValueError(f"Unsupported target coordinate system: {target_frame}")
+        
+        # Extract the first (canonical) name from each pattern list
+        azimuthal_pattern = target_patterns['azimuthal'][0]
+        polar_pattern = target_patterns['polar'][0]
+        
+        # Clean up regex patterns to get simple column names
+        def clean_pattern(pattern: str) -> str:
+            # Remove regex markers and get the base name
+            cleaned = pattern.replace(r'\b', '').replace('.*', '')
+            cleaned = cleaned.replace(r'[\s_-]*', '').replace('\\', '')
+            return cleaned
+        
+        target_azimuthal_col = clean_pattern(azimuthal_pattern)
+        target_polar_col = clean_pattern(polar_pattern)
+        
+        # Add new columns to the catalogue
+        self.catalogue[target_azimuthal_col] = transformed_azimuthal
+        self.catalogue[target_polar_col] = transformed_polar
+        
+        print(f"Added {target_frame} coordinates: {target_azimuthal_col}, {target_polar_col}")
+        
+        # Re-parse the catalogue to update coordinate systems
+        self._parse_angular_coordinates()
+
     def has_coordinate_system(self, system: str) -> bool:
         '''
         Check if a specific coordinate system is available in the catalogue.
@@ -96,10 +173,20 @@ class CatalogueToMap:
         '''
         return list(self.coordinate_systems.keys())
 
+    def get_column_names(self) -> list[str]:
+        return self.catalogue.colnames
+
+    def get_source_count(self) -> int:
+        return len(self.catalogue)
+
+    def get_catalogue(self) -> Table:
+        return self.catalogue
+
     def make_cut(self,
         column_name: str,
         minimum: Optional[float],
-        maximum: Optional[float]
+        maximum: Optional[float],
+        cut_outside: bool = True
     ) -> None:
         '''
         Apply a cut/filter to the catalogue based on a column's value range.
@@ -110,6 +197,9 @@ class CatalogueToMap:
             bound.
         :param maximum: Maximum value (inclusive) for the cut. If None, no upper
             bound.
+        :param cut_outside: If True, cut all values which fall outside the
+            specified range (default behaviour). If False, cut all values which
+            fall inside the range.
         '''
         cut = np.ones(len(self.catalogue), dtype=bool)
         column_data = np.asarray(self.catalogue[column_name])
@@ -118,6 +208,9 @@ class CatalogueToMap:
             cut &= column_data >= minimum
         if maximum is not None:
             cut &= column_data <= maximum
+
+        if not cut_outside:
+            cut = ~cut
 
         # Explicitly cast to Table for type checker
         self.catalogue = cast(Table, self.catalogue[cut])
