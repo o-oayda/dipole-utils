@@ -4,6 +4,8 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple, cast
 from .tools import angles_to_density_map
 from .coordinate_parser import CoordinateSystemParser
+import copy
+import healpy as hp
 
 
 class CatalogueToMap:
@@ -285,3 +287,46 @@ class CatalogueToMap:
         been generated.
         """
         return self.map_coordinate_system
+    
+    def copy_independent(self) -> "CatalogueToMap":
+        '''
+        Returns a totally independent (deep) copy of this CrossMatch object.
+        All attributes are recursively copied, so changes to the copy do not
+        affect the original.
+        '''
+        return copy.deepcopy(self)
+    
+    def mask_in_pixel_space(self,
+            pixels_to_mask: NDArray[np.int64],
+            coordinate_system: str,
+            nside: int,
+            nest: bool = False
+    ) -> None:
+        if 'pixel_indices' not in self.get_column_names():
+            self.compute_pixel_indices(coordinate_system, nside, nest)
+        
+        mask = ~np.isin(self.catalogue['pixel_indices'], pixels_to_mask) # type: ignore
+        self.catalogue = cast(Table, self.catalogue[mask])
+            
+    def compute_pixel_indices(self,
+            coordinate_system: str,
+            nside: int,
+            nest: bool = False
+    ) -> None:
+        coords = self.get_coordinates(coordinate_system)
+        if coords is None:
+            raise ValueError(
+                f"Could not retrieve coordinates for system "
+                f"{coordinate_system}'."
+            )
+        azimuthal_col, polar_col = coords
+        azimuthal_angles = np.asarray(self.catalogue[azimuthal_col], dtype=float)
+        polar_angles = np.asarray(self.catalogue[polar_col], dtype=float)
+        pixel_indices = hp.ang2pix(
+            nside,
+            azimuthal_angles, # lon (deg)
+            polar_angles,     # lat (deg)
+            lonlat=True,
+            nest=nest
+        )
+        self.catalogue.add_column(pixel_indices, name='pixel_indices')
