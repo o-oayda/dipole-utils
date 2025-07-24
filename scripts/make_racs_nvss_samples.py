@@ -152,6 +152,14 @@ assert (
       racs_overlap.get_source_count()
     + nvss_overlap.get_source_count()
 )
+
+print('% of RACS sources with counterpart: '
+  f'{xmatch_overlap.get_number_of_matches()*100 / racs_overlap.get_source_count():.1f}'
+)
+print('% of NVSS sources with counterpart: '
+  f'{xmatch_overlap.get_number_of_matches()*100 / nvss_overlap.get_source_count():.1f}'
+)
+
 # %%
 hp.projview(racs_dmap, sub=511, cmap='plasma', title='Unique RACS density map')
 hp.projview(nvss_dmap, sub=512, cmap='plasma', title='Unique NVSS density map')
