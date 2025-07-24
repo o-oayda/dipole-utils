@@ -14,6 +14,7 @@ class Masker:
         self.masked_pixel_indices = set()
         self.nside = hp.get_nside(density_map)
         self.npix = hp.nside2npix(self.nside)
+        self.all_indices = set(np.arange(self.npix))
 
     def _get_pole_vecs_in_native_coords(self, 
             pole_lon_deg: NDArray[np.float64],
@@ -58,8 +59,9 @@ class Masker:
     def _mask_around_poles(self, 
             north_pole_vector: NDArray[np.float64],
             south_pole_vector: NDArray[np.float64], 
-            north_latitude_cut: float,
-            south_latitude_cut: float | None = None
+            north_radius: float,
+            south_radius: float,
+            inverse_mask: bool = False
     ) -> None:
         """
         Mask pixels around both poles using disc queries.
@@ -70,27 +72,28 @@ class Masker:
         :param south_latitude_cut: Latitude threshold in degrees for south pole.
             If None, uses the same value as north_latitude_cut.
         """
-        # Use same radius for both poles if south_latitude_cut not specified
-        if south_latitude_cut is None:
-            south_latitude_cut = north_latitude_cut
-            
         # Query discs around both poles
         north_indices = hp.query_disc(
             self.nside,
             north_pole_vector,
-            radius=np.deg2rad(90.0 - north_latitude_cut)
+            radius=np.deg2rad(north_radius)
         )
         south_indices = hp.query_disc(
             self.nside,
             south_pole_vector,
-            radius=np.deg2rad(90.0 - south_latitude_cut)
+            radius=np.deg2rad(south_radius)
         )
         
         # Combine and apply mask
         mask_indices = np.concatenate([north_indices, south_indices])
+        if inverse_mask:
+            mask_indices = np.asarray(
+                list(self.all_indices - set(mask_indices)),
+                dtype=np.int64
+            )
         self._update_mask(mask_indices)
     
-    def _update_mask(self, mask_indices: NDArray) -> None:
+    def _update_mask(self, mask_indices: NDArray[np.int64]) -> None:
         self.mask_map[mask_indices] = False
         self.masked_pixel_indices.update(mask_indices)
 
@@ -114,13 +117,13 @@ class Masker:
         
         self._mask_around_poles(
             north_pole_vector, south_pole_vector, 
-            latitude_cut, latitude_cut
+            90-latitude_cut, 90-latitude_cut,
+            inverse_mask=True
         )
 
     def mask_equatorial_poles(self, 
-            latitude_cut: float = 80.0,
-            north_latitude_cut: float | None = None,
-            south_latitude_cut: float | None = None
+            north_radius: float = 0.,
+            south_radius: float = 0.
     ) -> None:
         """
         Mask the equatorial poles by masking pixels with |dec| > latitude_cut.
@@ -132,10 +135,6 @@ class Masker:
         :param south_latitude_cut: Declination threshold for south pole. If None,
             uses north_latitude_cut (or latitude_cut if north_latitude_cut is also None).
         """
-        # Use default value if specific pole cuts not provided
-        if north_latitude_cut is None:
-            north_latitude_cut = latitude_cut
-        
         # Equatorial pole coordinates (RA=0, Dec=±90)
         pole_lon_deg = np.asarray([0., 0.])
         pole_lat_deg = np.asarray([90., -90.])
@@ -146,13 +145,12 @@ class Masker:
         
         self._mask_around_poles(
             north_pole_vector, south_pole_vector,
-            north_latitude_cut, south_latitude_cut
+            north_radius, south_radius
         )
 
     def mask_ecliptic_poles(self, 
-            latitude_cut: float = 80.0,
-            north_latitude_cut: float | None = None,
-            south_latitude_cut: float | None = None
+            north_latitude_cut: float = 90.,
+            south_latitude_cut: float = 90.
     ) -> None:
         """
         Mask the ecliptic poles by masking pixels with
@@ -165,10 +163,6 @@ class Masker:
         :param south_latitude_cut: Ecliptic latitude threshold for south pole. If None,
             uses north_latitude_cut (or latitude_cut if north_latitude_cut is also None).
         """
-        # Use default value if specific pole cuts not provided
-        if north_latitude_cut is None:
-            north_latitude_cut = latitude_cut
-        
         # Ecliptic pole coordinates (longitude=0, latitude=±90)
         pole_lon_deg = np.asarray([0., 0.])
         pole_lat_deg = np.asarray([90., -90.])
@@ -218,6 +212,20 @@ class Masker:
         masked_map = self.density_map.astype(np.float64)
         masked_map[~self.mask_map] = np.nan
         return masked_map
+
+    def get_masked_pixels(self) -> NDArray[np.int64]:
+        return np.asarray(list(self.masked_pixel_indices), dtype=np.int64)
+    
+    def get_unmasked_pixels(self) -> NDArray[np.int64]:
+        unmasked_pixels = self.all_indices - self.masked_pixel_indices
+        return np.asarray(list(unmasked_pixels), dtype=np.int64)
+    
+    def get_mask_map(self) -> NDArray[np.int64]:
+        '''
+        Ones for unmasked area; zeros masked areas.
+        '''
+        map_to_return = self.mask_map
+        return map_to_return.astype(np.int64)
 
     def reset_mask(self) -> None:
         """
