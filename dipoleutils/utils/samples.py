@@ -529,7 +529,7 @@ class SimulatedDipoleMap:
         dipole_amplitude: float = 0.007,
         dipole_longitude: float = CMB_L,
         dipole_latitude: float = CMB_B
-    ):
+    ) -> NDArray[np.float64]:
         self.mean_density = mean_density
         self.dipole_amplitude = dipole_amplitude
         self.dipole_longitude = np.deg2rad(dipole_longitude)
@@ -547,6 +547,6 @@ class SimulatedDipoleMap:
         assert self.mean_density is not None, 'Dipole parameters not set.'
         self.dipole_and_monopole_signal = self.mean_density * (1 + dipole_signal)
         
-    def _signal_to_poisson(self):
+    def _signal_to_poisson(self) -> NDArray[np.float64]:
         assert hasattr(self, 'dipole_and_monopole_signal'), 'Compute the map signal first.'
-        return poisson.rvs(self.dipole_and_monopole_signal)        
+        return poisson.rvs(self.dipole_and_monopole_signal) # type: ignore
