@@ -4,6 +4,10 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple, cast
 from .tools import angles_to_density_map
 from .coordinate_parser import CoordinateSystemParser
+from .constants import CMB_L, CMB_B
+from .math import compute_dipole_signal
+import healpy as hp
+from scipy.stats import poisson
 
 
 class CatalogueToMap:
@@ -285,3 +289,42 @@ class CatalogueToMap:
         been generated.
         """
         return self.map_coordinate_system
+
+class SimulatedDipoleMap:
+    def __init__(self, nside: int = 64) -> None:
+        self.nside = nside
+        self.npix = hp.nside2npix(self.nside)
+        pixel_vectors_tuple = hp.pix2vec(nside=self.nside, ipix=np.arange(self.npix))
+        self.pixel_vectors = np.vstack(pixel_vectors_tuple).T
+        self.mean_density = None
+        self.dipole_amplitude = None
+        self.dipole_longitude = None
+        self.dipole_latitude = None
+
+    def make_map(
+        self,
+        mean_density: float = 50.,
+        dipole_amplitude: float = 0.007,
+        dipole_longitude: float = CMB_L,
+        dipole_latitude: float = CMB_B
+    ):
+        self.mean_density = mean_density
+        self.dipole_amplitude = dipole_amplitude
+        self.dipole_longitude = np.deg2rad(dipole_longitude)
+        self.dipole_latitude = np.pi / 2 - np.deg2rad(dipole_latitude)
+        self._compute_map_signal()
+        return self._signal_to_poisson()
+
+    def _compute_map_signal(self):
+        dipole_signal = compute_dipole_signal(
+            np.asarray(self.dipole_amplitude).reshape((1,)),
+            np.asarray(self.dipole_longitude).reshape((1,)),
+            np.asarray(self.dipole_latitude).reshape((1,)),
+            np.asarray(self.pixel_vectors)
+        ).squeeze()
+        assert self.mean_density is not None, 'Dipole parameters not set.'
+        self.dipole_and_monopole_signal = self.mean_density * (1 + dipole_signal)
+        
+    def _signal_to_poisson(self):
+        assert hasattr(self, 'dipole_and_monopole_signal'), 'Compute the map signal first.'
+        return poisson.rvs(self.dipole_and_monopole_signal)        
