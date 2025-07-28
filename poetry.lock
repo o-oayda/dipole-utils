@@ -602,6 +602,30 @@ unicode = ["unicodedata2 (>=15.1.0) ; python_version <= \"3.12\""]
 woff = ["brotli (>=1.0.1) ; platform_python_implementation == \"CPython\"", "brotlicffi (>=0.8.0) ; platform_python_implementation != \"CPython\"", "zopfli (>=0.1.4)"]
 
 [[package]]
+name = "getdist"
+version = "1.7.1"
+description = "GetDist Monte Carlo sample analysis, plotting and GUI"
+optional = false
+python-versions = ">=3.10.0"
+groups = ["main"]
+files = [
+    {file = "getdist-1.7.1-py3-none-any.whl", hash = "sha256:84290b6e59e294f76030aff200d362f7369ee05199ffa89510e7e152e52d18be"},
+    {file = "getdist-1.7.1.tar.gz", hash = "sha256:d96cbd3cc4fc7e5f21aba2eddfc981ccd26b8ea13e6677fdcd6f7c247c2a7478"},
+]
+
+[package.dependencies]
+matplotlib = ">=2.2.0,<3.5.0 || >3.5.0"
+numpy = ">=1.23.0"
+packaging = ">=24"
+PyYAML = ">=5.1"
+scipy = ">=1.5"
+
+[package.extras]
+docs = ["jupytext", "sphinx", "sphinx_markdown_builder", "sphinx_rtd_theme (>=1.0)", "sphinxcontrib-jquery"]
+gui = ["PySide6 (>=6.1)"]
+streamlitgui = ["streamlit (>=1.24.0)"]
+
+[[package]]
 name = "h5py"
 version = "3.14.0"
 description = "Read and write HDF5 files from Python"
@@ -1807,4 +1831,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12"
-content-hash = "ae105be6ce6eb474331f27228c084c7885acbdbb55c26ecddd7f83481825c396"
+content-hash = "beb60b021b8c896faa8d706ac82831610c3772e24284cd528fb4e85746e02118"
