@@ -231,6 +231,81 @@ class CrossMatch:
         else:
             return self.crossmatch_catalogue
 
+    def get_common_sources(self) -> Table:
+        assert self.crossmatch_catalogue is not None
+        common_mask = self.crossmatch_catalogue['source_idx_B'] != -1
+        crossmatch_subset = self.crossmatch_catalogue[common_mask]
+        
+        # Get the source indices for matched sources
+        A_indices = np.asarray(crossmatch_subset['source_idx_A'])
+        B_indices = np.asarray(crossmatch_subset['source_idx_B'])
+        
+        # Extract data from original catalogues
+        A_data = self.catalogueA[A_indices]
+        B_data = self.catalogueB[B_indices]
+        
+        # Create combined table with prefixed columns
+        combined_table = Table()
+        
+        # Add A columns with 'A_' prefix
+        for col_name in self.catalogueA.colnames:
+            combined_table[f'A_{col_name}'] = A_data[col_name]
+        
+        # Add B columns with 'B_' prefix
+        for col_name in self.catalogueB.colnames:
+            combined_table[f'B_{col_name}'] = B_data[col_name]
+        
+        # Add crossmatch metadata
+        combined_table['source_idx_A'] = crossmatch_subset['source_idx_A']
+        combined_table['source_idx_B'] = crossmatch_subset['source_idx_B']
+        combined_table['angular_distance_arcsec'] = crossmatch_subset['angular_distance_arcsec']
+        
+        return combined_table
+
+    def get_unique_A_sources(self) -> Table:
+        assert self.crossmatch_catalogue is not None
+        uniqueA_mask = self.crossmatch_catalogue['source_idx_B'] == -1
+        crossmatch_subset = self.crossmatch_catalogue[uniqueA_mask]
+        
+        # Get the source indices for unmatched A sources
+        A_indices = np.asarray(crossmatch_subset['source_idx_A'])
+        
+        # Extract data from original catalogue A
+        A_data = self.catalogueA[A_indices]
+        
+        # Create table with prefixed columns
+        result_table = Table()
+        
+        # Add A columns with 'A_' prefix
+        for col_name in self.catalogueA.colnames:
+            result_table[f'A_{col_name}'] = A_data[col_name]
+        
+        # Add crossmatch metadata
+        result_table['source_idx_A'] = crossmatch_subset['source_idx_A']
+        result_table['source_idx_B'] = crossmatch_subset['source_idx_B']  # Will be -1
+        result_table['angular_distance_arcsec'] = crossmatch_subset['angular_distance_arcsec']  # Will be NaN
+        
+        return result_table
+    
+    def get_unique_B_sources(self) -> Table:
+        assert self.crossmatch_catalogue is not None
+        all_B_idxs = set( range(len(self.catalogueB)) )
+        common_mask = self.crossmatch_catalogue['source_idx_B'] != -1
+        matched_B_idxs = set( self.crossmatch_catalogue['source_idx_B'][common_mask] ) # type: ignore
+        unique_B_idxs = all_B_idxs - matched_B_idxs
+        
+        # Extract data from original catalogue B
+        B_data = self.catalogueB[list(unique_B_idxs)]
+        
+        # Create table with prefixed columns
+        result_table = Table()
+        
+        # Add B columns with 'B_' prefix
+        for col_name in self.catalogueB.colnames:
+            result_table[f'B_{col_name}'] = B_data[col_name]
+        
+        return result_table
+
     def _determine_source_name_columns(self,
             source_name_A_column: Optional[str],
             source_name_B_column: Optional[str]
