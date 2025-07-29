@@ -27,8 +27,8 @@ model.run_nested_sampling(run_kwargs={'min_ess': 1_000}) # get more posterior sa
 model_high = Dipole(dmap_high)
 model_high.run_nested_sampling(run_kwargs={'min_ess': 1_000}) # get more posterior samples (min_ess)
 
-samps = MCSamples(samples=model.samples, names=['D', 'phi', 'theta'], labels=['D', '\\phi', '\\theta']) 
-samps_high = MCSamples(samples=model_high.samples, names=['D', 'phi', 'theta'], labels=['D', '\\phi', '\\theta'])
+samps = MCSamples(samples=model.samples, names=['D', 'phi', 'theta'], labels=['D', '\\phi', '\\theta'], sampler='nested') 
+samps_high = MCSamples(samples=model_high.samples, names=['D', 'phi', 'theta'], labels=['D', '\\phi', '\\theta'], sampler='nested')
 
 for s in [samps, samps_high]:
     s.updateSettings(
