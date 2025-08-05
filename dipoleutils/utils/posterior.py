@@ -240,7 +240,8 @@ function to this method when instantiating from an ultranest run number.'''
             nside: int = 256,
             rasterize_probability_mesh: bool = False,
             instantiate_new_axes: bool = True,
-            label: str = 'Posterior Contours'
+            label: str = 'Posterior Contours',
+            save_path: str | None = None
         ) -> None:
         '''
         :param colour: Specify the matplotlib colour for the sky direction.
@@ -260,6 +261,7 @@ function to this method when instantiating from an ultranest run number.'''
             directions on the same axis, set this to True for the first
             call of sky_direction_posterior then False for subsequent calls.
         :param label: Label to display in the plot legend.
+        :param save_path: Directory to save plot into.
         '''
         # ensure angle samples are in degrees of longitude and latitude
         full_samples_for_sky = self._convert_samples(coordinates)
@@ -350,6 +352,14 @@ function to this method when instantiating from an ultranest run number.'''
             ax.legend(handles=handles, labels=labels, loc='upper right')
         else:
             ax.legend(handles=[contour_proxy], labels=[label], loc='upper right')
+
+        if save_path is not None:
+            plt.savefig(
+                save_path,
+                bbox_inches='tight',
+                dpi=300
+            )
+        plt.show()
 
     def _make_transparent_colour_map(self,
                 colour: str
