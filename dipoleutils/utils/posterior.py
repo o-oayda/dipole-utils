@@ -74,6 +74,7 @@ class PosteriorMixin:
     def corner_plot(self,
             coordinates: list[str] | None = None,
             save_path: str | None = None,
+            show: bool = True,
             **corner_kwargs
         ) -> None:
         '''
@@ -90,6 +91,7 @@ class PosteriorMixin:
             conversion to longitude and latitude in degrees.
         :param save_path: Specify a path to save the corner plot. If None, the
             plot will not be saved. The default is None.
+        :param show: Whether or not to show the matplotlib figure (plt.show).
         '''
         if coordinates is not None:
             samples_for_corner = self._convert_samples(coordinates)
@@ -116,7 +118,8 @@ class PosteriorMixin:
                 bbox_inches='tight',
                 dpi=300
             )
-        plt.show()
+        if show:
+            plt.show()
 
     def corner_plot_double(self,
             second_model: Self,
@@ -177,7 +180,6 @@ class PosteriorMixin:
                 bbox_inches='tight',
                 dpi=300
             )
-        plt.show()
 
     def posterior_predictive_check(self,
             n_samples: int = 5,
@@ -241,7 +243,8 @@ function to this method when instantiating from an ultranest run number.'''
             rasterize_probability_mesh: bool = False,
             instantiate_new_axes: bool = True,
             label: str = 'Posterior Contours',
-            save_path: str | None = None
+            save_path: str | None = None,
+            show: bool = True
         ) -> None:
         '''
         :param colour: Specify the matplotlib colour for the sky direction.
@@ -262,6 +265,7 @@ function to this method when instantiating from an ultranest run number.'''
             call of sky_direction_posterior then False for subsequent calls.
         :param label: Label to display in the plot legend.
         :param save_path: Directory to save plot into.
+        :param show: Whether or not to show the matplotlib figure (plt.show).
         '''
         # ensure angle samples are in degrees of longitude and latitude
         full_samples_for_sky = self._convert_samples(coordinates)
@@ -359,7 +363,8 @@ function to this method when instantiating from an ultranest run number.'''
                 bbox_inches='tight',
                 dpi=300
             )
-        plt.show()
+        if show:
+            plt.show()
 
     def _make_transparent_colour_map(self,
                 colour: str
