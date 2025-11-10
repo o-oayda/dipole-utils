@@ -50,7 +50,17 @@ class TestMultipoleIntegration:
         }
 
         simulator = SimulatedMultipoleMap(nside=nside, ells=[1, 2])
-        density_map = simulator.make_map(parameters=parameters, poisson_seed=8675309)
+        poisson_seed = 141
+        density_map = simulator.make_map(parameters=parameters, poisson_seed=poisson_seed)
+        map_prefix = ARTIFACT_DIR / f'fiducial_map_nside{nside}'
+        map_path, metadata_path = simulator.save_simulation(
+            density_map=density_map,
+            parameters=parameters,
+            output_prefix=map_prefix,
+            poisson_seed=poisson_seed
+        )
+        assert map_path.exists()
+        assert metadata_path.exists()
         assert np.sum(density_map) >= 1_500_000
         assert np.isclose(np.sum(density_map), mean_density * hp.nside2npix(nside), rtol=0.2)
 
