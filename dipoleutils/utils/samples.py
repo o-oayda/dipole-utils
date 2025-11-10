@@ -1,6 +1,8 @@
 from astropy.table import Table
 from numpy.typing import NDArray
 import numpy as np
+import json
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, cast, Literal, Callable, Union
 from .tools import angles_to_density_map
 from .coordinate_parser import CoordinateSystemParser
@@ -628,6 +630,56 @@ class SimulatedMultipoleMap:
             return poisson.rvs(rate_map) # type: ignore[arg-type]
         rng = poisson_seed if isinstance(poisson_seed, np.random.Generator) else np.random.default_rng(poisson_seed)
         return rng.poisson(rate_map)
+
+    def save_simulation(
+        self,
+        density_map: NDArray[np.float64],
+        parameters: Dict[Union[str, int], Union[float, NDArray[np.float64]]],
+        output_prefix: Union[str, Path],
+        poisson_seed: Union[int, None] = None,
+        extra_metadata: Optional[Dict[str, Union[str, float, int, bool]]] = None
+    ) -> Tuple[Path, Path]:
+        """
+        Persist a simulated map alongside the parameters used to generate it.
+
+        :param density_map: HEALPix density map array to save.
+        :param parameters: Dictionary of parameters supplied during simulation.
+        :param output_prefix: Base filepath (excluding suffix). ``.npy`` and
+            ``.json`` files are written using this prefix.
+        :param poisson_seed: Optional seed recorded in the metadata to aid
+            reproducibility.
+        :param extra_metadata: Optional flat dictionary of additional metadata
+            to embed in the JSON file.
+        :return: Tuple of (map_path, metadata_path).
+        """
+        prefix = Path(output_prefix)
+        prefix.parent.mkdir(parents=True, exist_ok=True)
+        map_path = prefix.with_suffix('.npy')
+        metadata_path = prefix.with_suffix('.json')
+        np.save(map_path, density_map)
+
+        metadata: Dict[str, Union[str, float, int, bool, list, dict, None]] = {
+            'map_path': str(map_path),
+            'nside': self.nside,
+            'angles_in_degrees': self.angles_in_degrees,
+            'ells': self.ells,
+            'poisson_seed': poisson_seed,
+            'parameters': self._serialise_parameters(parameters),
+        }
+        if extra_metadata:
+            metadata['extra_metadata'] = extra_metadata
+
+        metadata_path.write_text(json.dumps(metadata, indent=2))
+        return map_path, metadata_path
+
+    def _serialise_parameters(
+        self,
+        parameters: Dict[Union[str, int], Union[float, NDArray[np.float64]]]
+    ) -> Dict[str, float]:
+        serialised: Dict[str, float] = {}
+        for key, value in parameters.items():
+            serialised[str(key)] = self._to_float(value)
+        return serialised
 
     def _assemble_signal(
         self,
