@@ -7,8 +7,13 @@ from .coordinate_parser import CoordinateSystemParser
 import copy
 import healpy as hp
 from .constants import CMB_L, CMB_B
-from .math import compute_dipole_signal
-import healpy as hp
+from .math import (
+    compute_dipole_signal,
+    multipole_pixel_product_vectorised,
+    multipole_tensor_vectorised,
+    vectorised_quadrupole_tensor,
+    vectorised_spherical_to_cartesian
+)
 from scipy.stats import poisson
 
 
@@ -550,3 +555,252 @@ class SimulatedDipoleMap:
     def _signal_to_poisson(self) -> NDArray[np.float64]:
         assert hasattr(self, 'dipole_and_monopole_signal'), 'Compute the map signal first.'
         return poisson.rvs(self.dipole_and_monopole_signal) # type: ignore
+
+
+class SimulatedMultipoleMap:
+    """
+    Build simulated count maps that contain arbitrary multipole structure.
+
+    Parameters for the multipoles must follow the naming convention used by
+    :class:`dipoleutils.models.multipole.Multipole`, e.g.
+    ``{'M0': 50., 'M1': 0.01, 'phi_l1_0': ..., 'theta_l1_0': ...}``.
+    Each ell >= 1 requires an amplitude ``M{ell}`` and `ell` azimuthal/polar
+    pairs ``phi_l{ell}_{i}`` / ``theta_l{ell}_{i}``.  Angles are interpreted as
+    radians unless ``angles_in_degrees`` is set at initialisation.
+    """
+
+    def __init__(
+        self,
+        nside: int = 64,
+        ells: Optional[List[int]] = None,
+        angles_in_degrees: bool = False
+    ) -> None:
+        self.nside = nside
+        self.npix = hp.nside2npix(self.nside)
+        pixel_vectors = hp.pix2vec(nside=self.nside, ipix=np.arange(self.npix))
+        self.pixel_vectors = np.vstack(pixel_vectors).T
+        self.pixel_vectors_xyz = [pixel_vectors[0], pixel_vectors[1], pixel_vectors[2]]
+        self.ells = self._validate_ells(ells) if ells is not None else None
+        self.mean_density: float | None = None
+        self.angles_in_degrees = angles_in_degrees
+
+    def make_map(
+        self,
+        parameters: Dict[Union[str, int], Union[float, NDArray[np.float64]]],
+        ells: Optional[List[int]] = None,
+        poisson_seed: Union[int, np.random.Generator, None] = None
+    ) -> NDArray[np.float64]:
+        """
+        Generate a Poisson realisation of a map that contains the requested
+        multipole content.
+
+        :param parameters: Dictionary of monopole/multipole parameters.
+            The monopole is expected under ``'M0'`` (or synonyms listed
+            in :meth:`_extract_mean_density`), amplitudes under ``'M{ell}'``,
+            and angles under ``phi_l{ell}_{i}`` / ``theta_l{ell}_{i}``.
+        :param ells: Optional override of the multipole orders to include.
+            When omitted, the orders provided at instantiation are used.
+        :raises ValueError: If the inputs are inconsistent or incomplete.
+        :param poisson_seed: Optional seed (or Generator instance) passed to the
+            Poisson sampler to obtain deterministic count maps.
+        :return: Poisson deviates for each HEALPix pixel.
+        """
+        active_ells = self._get_active_ells(ells)
+        self.mean_density = self._extract_mean_density(parameters)
+        multipole_signal = self._assemble_signal(
+            parameters=parameters,
+            ells=active_ells
+        )
+        rate_map = self.mean_density * multipole_signal
+        if np.any(rate_map < 0):
+            raise ValueError(
+                'Computed rate map contains negative entries. '
+                'Check that the requested amplitudes keep the signal positive.'
+            )
+        return self._poisson_sample(rate_map, poisson_seed)
+
+    def _poisson_sample(
+        self,
+        rate_map: NDArray[np.float64],
+        poisson_seed: Union[int, np.random.Generator, None]
+    ) -> NDArray[np.float64]:
+        if poisson_seed is None:
+            return poisson.rvs(rate_map) # type: ignore[arg-type]
+        rng = poisson_seed if isinstance(poisson_seed, np.random.Generator) else np.random.default_rng(poisson_seed)
+        return rng.poisson(rate_map)
+
+    def _assemble_signal(
+        self,
+        parameters: Dict[Union[str, int], Union[float, NDArray[np.float64]]],
+        ells: List[int]
+    ) -> NDArray[np.float64]:
+        signal = np.ones(self.npix, dtype=np.float64)
+        for ell in ells:
+            if ell == 0:
+                continue
+            ell_signal = self._order_signal(
+                ell=ell,
+                parameters=parameters,
+                angles_in_degrees=self.angles_in_degrees
+            )
+            signal += ell_signal
+        return signal
+
+    def _order_signal(
+        self,
+        ell: int,
+        parameters: Dict[Union[str, int], Union[float, NDArray[np.float64]]],
+        angles_in_degrees: bool
+    ) -> NDArray[np.float64]:
+        amplitude = self._extract_amplitude(parameters, ell)
+        if np.isclose(amplitude, 0.0):
+            return np.zeros(self.npix, dtype=np.float64)
+        phi_angles = self._extract_angles(
+            parameters=parameters,
+            ell=ell,
+            angle_type='phi',
+            amplitude=amplitude,
+            angles_in_degrees=angles_in_degrees
+        )
+        theta_angles = self._extract_angles(
+            parameters=parameters,
+            ell=ell,
+            angle_type='theta',
+            amplitude=amplitude,
+            angles_in_degrees=angles_in_degrees
+        )
+        amplitude_like = np.asarray([amplitude], dtype=np.float64)
+        phi_like = phi_angles[None, :]
+        theta_like = theta_angles[None, :]
+
+        if ell == 1:
+            signal = compute_dipole_signal(
+                dipole_amplitude=amplitude_like,
+                dipole_longitude=phi_like.squeeze(),
+                dipole_colatitude=theta_like.squeeze(),
+                pixel_vectors=self.pixel_vectors
+            )
+        elif ell == 2:
+            cartesian_vectors = vectorised_spherical_to_cartesian(
+                phi_like=phi_like,
+                theta_like=theta_like
+            )
+            tensors = vectorised_quadrupole_tensor(
+                amplitude_like=amplitude_like,
+                cartesian_quadrupole_vectors=cartesian_vectors
+            )
+            signal = multipole_pixel_product_vectorised(
+                multipole_tensors=tensors,
+                pixel_vectors=self.pixel_vectors_xyz,
+                ell=ell
+            )
+        else:
+            cartesian_vectors = vectorised_spherical_to_cartesian(
+                phi_like=phi_like,
+                theta_like=theta_like
+            )
+            tensors = multipole_tensor_vectorised(
+                amplitude_like=amplitude_like,
+                cartesian_multipole_vectors=cartesian_vectors
+            )
+            signal = multipole_pixel_product_vectorised(
+                multipole_tensors=tensors,
+                pixel_vectors=self.pixel_vectors_xyz,
+                ell=ell
+            )
+        return signal.squeeze()
+
+    def _extract_angles(
+        self,
+        parameters: Dict[Union[str, int], Union[float, NDArray[np.float64]]],
+        ell: int,
+        angle_type: Literal['phi', 'theta'],
+        amplitude: float,
+        angles_in_degrees: bool
+    ) -> NDArray[np.float64]:
+        prefix = f'{angle_type}_l{ell}_'
+        matches: Dict[int, float] = {}
+        for key, value in parameters.items():
+            if not isinstance(key, str):
+                continue
+            if not key.startswith(prefix):
+                continue
+            try:
+                idx = int(key.split('_')[-1])
+            except ValueError:
+                continue
+            if idx in matches:
+                raise ValueError(f'Duplicate {angle_type} index {idx} for ell={ell}.')
+            matches[idx] = self._to_float(value)
+        if not matches:
+            if np.isclose(amplitude, 0.0):
+                return np.zeros(ell, dtype=np.float64)
+            raise ValueError(
+                f'Missing {angle_type} angles for ell={ell}. '
+                f'Expected keys {prefix}0..{ell-1}.'
+            )
+        expected = set(range(ell))
+        if set(matches) != expected:
+            raise ValueError(
+                f'Incomplete {angle_type} specification for ell={ell}. '
+                f'Found indices {sorted(matches)}, expected {sorted(expected)}.'
+            )
+        ordered = np.array([matches[i] for i in range(ell)], dtype=np.float64)
+        if angles_in_degrees:
+            ordered = np.deg2rad(ordered)
+        return ordered
+
+    def _extract_amplitude(
+        self,
+        parameters: Dict[Union[str, int], Union[float, NDArray[np.float64]]],
+        ell: int
+    ) -> float:
+        keys_to_try: List[Union[str, int]] = [f'M{ell}', str(ell), ell]
+        return self._get_scalar_parameter(parameters, keys_to_try, missing_msg=f'Missing amplitude for ell={ell}.')
+
+    def _extract_mean_density(
+        self,
+        parameters: Dict[Union[str, int], Union[float, NDArray[np.float64]]]
+    ) -> float:
+        keys_to_try: List[Union[str, int]] = ['M0', 'mean_density', 'density', 'monopole', 0, '0']
+        return self._get_scalar_parameter(parameters, keys_to_try, missing_msg='Missing monopole / mean density (key "M0").')
+
+    def _get_scalar_parameter(
+        self,
+        parameters: Dict[Union[str, int], Union[float, NDArray[np.float64]]],
+        candidate_keys: List[Union[str, int]],
+        missing_msg: str
+    ) -> float:
+        for key in candidate_keys:
+            if key in parameters:
+                return self._to_float(parameters[key])
+        raise ValueError(missing_msg)
+
+    def _to_float(self, value: Union[float, NDArray[np.float64]]) -> float:
+        arr = np.asarray(value, dtype=np.float64)
+        if arr.size != 1:
+            raise ValueError('Expected scalar parameter value.')
+        return float(arr.reshape(-1)[0])
+
+    def _get_active_ells(self, ells: Optional[List[int]]) -> List[int]:
+        if ells is not None:
+            validated = self._validate_ells(ells)
+            self.ells = validated
+        if self.ells is None:
+            raise ValueError('No multipole orders (ells) specified.')
+        return self.ells
+
+    def _validate_ells(self, ells: Optional[List[int]]) -> List[int]:
+        if ells is None:
+            return []
+        unique: List[int] = []
+        seen = set()
+        for ell in ells:
+            ell_int = int(ell)
+            if ell_int < 0:
+                raise ValueError('Multipole orders must be non-negative.')
+            if ell_int in seen:
+                continue
+            seen.add(ell_int)
+            unique.append(ell_int)
+        return unique
