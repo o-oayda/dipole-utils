@@ -1,10 +1,11 @@
 import pytest
 import numpy as np
+import healpy as hp
 from astropy.table import Table
 from unittest.mock import Mock, patch, MagicMock
 from numpy.typing import NDArray
 
-from dipoleutils.utils.samples import CatalogueToMap
+from dipoleutils.utils.samples import CatalogueToMap, SimulatedMultipoleMap
 from dipoleutils.utils.coordinate_parser import CoordinateSystemParser
 
 
@@ -261,7 +262,6 @@ class TestCatalogueToMapUnit:
         if available_systems:
             system_to_test = available_systems[0]
             result = mapper.make_density_map(coordinate_system=system_to_test)
-            
             mock_angles_to_density_map.assert_called_once()
             call_args = mock_angles_to_density_map.call_args
             
@@ -280,7 +280,6 @@ class TestCatalogueToMapUnit:
         
         if mapper.has_valid_coordinates():
             result = mapper.make_density_map(nside=128, nest=True)
-            
             call_args = mock_angles_to_density_map.call_args
             assert call_args.kwargs['nside'] == 128
             assert call_args.kwargs['nest'] is True
@@ -501,3 +500,32 @@ class TestCatalogueToMapIntegration:
         # Now should find the custom system
         assert final_mapper.has_valid_coordinates()
         assert final_mapper.has_coordinate_system('instrument')
+
+
+class TestSimulatedMultipoleMap:
+    def test_simulated_multipole_map_dipole_only(self):
+        sim = SimulatedMultipoleMap(nside=4, ells=[1])
+        params = {
+            'M0': 25.0,
+            'M1': 0.01,
+            'phi_l1_0': 1.0,
+            'theta_l1_0': np.pi / 2,
+        }
+        density_map = sim.make_map(parameters=params)
+        assert density_map.shape == (hp.nside2npix(4),)
+        assert np.all(density_map >= 0)
+        assert np.isfinite(density_map).all()
+
+    def test_simulated_multipole_map_quadrupole_degrees(self):
+        sim = SimulatedMultipoleMap(nside=4, ells=[2], angles_in_degrees=True)
+        params = {
+            'M0': 40.0,
+            'M2': 0.02,
+            'phi_l2_0': 10.0,
+            'theta_l2_0': 40.0,
+            'phi_l2_1': 120.0,
+            'theta_l2_1': 60.0,
+        }
+        density_map = sim.make_map(parameters=params)
+        assert density_map.shape == (hp.nside2npix(4),)
+        assert density_map.dtype.kind in {'i', 'u'}

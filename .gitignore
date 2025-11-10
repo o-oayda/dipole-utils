@@ -208,3 +208,4 @@ __marimo__/
 
 docs/*
 ultranest_logs/*
+tests/artifacts/
