@@ -1,3 +1,4 @@
+import json
 import pytest
 import numpy as np
 import healpy as hp
@@ -529,3 +530,28 @@ class TestSimulatedMultipoleMap:
         density_map = sim.make_map(parameters=params)
         assert density_map.shape == (hp.nside2npix(4),)
         assert density_map.dtype.kind in {'i', 'u'}
+
+    def test_simulated_multipole_save_simulation(self, tmp_path):
+        sim = SimulatedMultipoleMap(nside=4, ells=[1])
+        params = {
+            'M0': 20.0,
+            'M1': 0.01,
+            'phi_l1_0': 0.5,
+            'theta_l1_0': 1.0,
+        }
+        density_map = sim.make_map(parameters=params, poisson_seed=123)
+        map_path, metadata_path = sim.save_simulation(
+            density_map=density_map,
+            parameters=params,
+            output_prefix=tmp_path / 'unit_sim',
+            poisson_seed=123,
+            extra_metadata={'tag': 'unit'}
+        )
+        assert map_path.exists()
+        assert metadata_path.exists()
+        loaded = np.load(map_path)
+        assert np.array_equal(loaded, density_map)
+        metadata = json.loads(metadata_path.read_text())
+        assert metadata['poisson_seed'] == 123
+        assert metadata['parameters']['M1'] == pytest.approx(params['M1'])
+        assert metadata['extra_metadata']['tag'] == 'unit'
