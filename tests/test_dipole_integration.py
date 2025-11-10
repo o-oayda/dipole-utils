@@ -10,6 +10,7 @@ from dipoleutils.models.dipole import Dipole
 from dipoleutils.models.priors import Prior
 
 
+@pytest.mark.slow
 class TestDipoleNestSamplingIntegration:
     """
     Integration tests for nested sampling with the Dipole model.
