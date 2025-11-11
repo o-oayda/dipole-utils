@@ -107,8 +107,10 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             
             all_priors = {**all_amplitude_priors, **all_angle_priors}
             self._prior = Prior(choose_prior=all_priors)
+            self.prior_is_custom = False
         else:
             self._prior = prior
+            self.prior_is_custom = True
 
     def _get_angle_indices(self):
         self.phi_indices = defaultdict(list)

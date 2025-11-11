@@ -65,7 +65,7 @@ class TestMultipoleIntegration:
         assert np.sum(density_map) >= 1_500_000
         assert np.isclose(np.sum(density_map), mean_density * hp.nside2npix(nside), rtol=0.2)
 
-        model = Multipole(density_map=density_map, ells=[1, 2])
+        model = Multipole(density_map=density_map, ells=[0, 1, 2])
         log_dir = tmp_path / 'ultranest_logs'
         corner_path = ARTIFACT_DIR / 'multipole_corner.png'
 
@@ -79,10 +79,7 @@ class TestMultipoleIntegration:
             run_kwargs={
                 'min_num_live_points': 200,
                 'min_ess': 200,
-                'viz_callback': None,
-                'show_status': True,
-                'dlogz': 1.0,
-                'dKL': 0.5
+                'show_status': True
             }
         )
 
