@@ -8,6 +8,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+import time
 
 from dipoleutils.models.multipole import Multipole
 from dipoleutils.utils.samples import SimulatedMultipoleMap
@@ -68,6 +69,7 @@ class TestMultipoleIntegration:
         log_dir = tmp_path / 'ultranest_logs'
         corner_path = ARTIFACT_DIR / 'multipole_corner.png'
 
+        start = time.perf_counter()
         model.run_nested_sampling(
             step=True,
             reactive_sampler_kwargs={
@@ -133,3 +135,5 @@ class TestMultipoleIntegration:
         figure.savefig(corner_path, dpi=200)
         plt.close(figure)
         assert corner_path.exists()
+        duration = time.perf_counter() - start
+        print(f"Multipole integration completed in {duration:.1f}s")
