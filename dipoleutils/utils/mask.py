@@ -1,7 +1,24 @@
-import numpy as np
-from numpy.typing import NDArray
+import json
+from functools import lru_cache
+from importlib import resources
+from typing import Sequence
+
+import astropy.units as u
 import healpy as hp
+import numpy as np
+from astropy.coordinates import SkyCoord
+from numpy.typing import NDArray
 from dipoleutils.utils.physics import change_source_coordinates
+
+
+@lru_cache(maxsize=1)
+def _load_a_team_sources() -> dict[str, dict[str, str]]:
+    """
+    Load the A-team sources from the packaged JSON file.
+    """
+    data_path = resources.files('dipoleutils.data').joinpath('a_team_sources.json')
+    with data_path.open('r', encoding='utf-8') as handle:
+        return json.load(handle)
 
 class Masker:
     def __init__(self,
@@ -175,6 +192,82 @@ class Masker:
             north_pole_vector, south_pole_vector,
             north_latitude_cut, south_latitude_cut
         )
+
+    def mask_a_team_sources(
+            self,
+            radius_deg: float,
+            source_names: Sequence[str] | None = None
+    ) -> None:
+        """
+        Mask circular regions around all A-team sources defined in
+        ``dipoleutils/data/a_team_sources.json``.
+
+        :param radius_deg: Radius of the circular mask (in degrees) applied to
+            every source.
+        :param source_names: Optional iterable of source names to mask. When None,
+            all sources are masked.
+        """
+        if radius_deg <= 0:
+            raise ValueError("radius_deg must be positive.")
+
+        sources = _load_a_team_sources()
+        if not sources:
+            return
+
+        if source_names is None:
+            selected = list(sources.items())
+        else:
+            source_map = dict(sources)
+            missing = [name for name in source_names if name not in source_map]
+            if missing:
+                missing_str = ", ".join(missing)
+                raise ValueError(f"Unknown A-team source(s): {missing_str}")
+            seen = set()
+            selected = []
+            for name in source_names:
+                if name in seen:
+                    continue
+                selected.append((name, source_map[name]))
+                seen.add(name)
+
+        if not selected:
+            return
+
+        # Extract coordinate strings while preserving insertion order.
+        ra_values = [entry["ra"] for _, entry in selected]
+        dec_values = [entry["dec"] for _, entry in selected]
+
+        sky_coords = SkyCoord(
+            ra=ra_values,
+            dec=dec_values,
+            unit=(u.hourangle, u.deg),
+            frame='icrs'
+        )
+
+        source_lon_deg = np.asarray(sky_coords.ra.deg, dtype=np.float64)
+        source_lat_deg = np.asarray(sky_coords.dec.deg, dtype=np.float64)
+
+        if self.coordinate_system != 'equatorial':
+            source_lon_deg, source_lat_deg = change_source_coordinates(
+                source_lon_deg,
+                source_lat_deg,
+                native_coordinates='equatorial',
+                target_coordinates=self.coordinate_system
+            )
+
+        radius_rad = np.deg2rad(radius_deg)
+        disc_indices = []
+        for lon_deg, lat_deg in zip(source_lon_deg, source_lat_deg):
+            theta = np.deg2rad(90.0 - lat_deg)
+            phi = np.deg2rad(lon_deg)
+            source_vec = hp.ang2vec(theta, phi)
+            disc_indices.append(
+                hp.query_disc(self.nside, source_vec, radius=radius_rad)
+            )
+
+        if disc_indices:
+            all_indices = np.unique(np.concatenate(disc_indices))
+            self._update_mask(all_indices)
 
     def mask_slice(self,
             slice_longitude: float,
