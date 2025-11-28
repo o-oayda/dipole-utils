@@ -18,10 +18,11 @@ matplotlib = "^3.10.3"
 numpy = "^2.3.1"
 ipython = "^9.4.0"
 getdist = "^1.7.1"
+dipoleska = {git = "https://github.com/o-oayda/dipole-ska.git", rev = "build/relax-matplotlib-version"}
 
 
 [tool.poetry.group.test.dependencies]
-pytest = ">=7.0.0,<8.0.0"
+pytest = ">=7.0.0"
 pytest-cov = ">=4.0.0,<5.0.0"
 
 
