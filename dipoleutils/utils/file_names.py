@@ -27,11 +27,14 @@ fn_dict = {
     'racs': {
         'low1': 'AS110_Derived_Catalogue_racs_dr1_sources_galacticcut_v2021_08_v02_5725.csv',
         'low2': 'RACS-low2_sources.fits',
-        'low2-45"': 'RACS-low2_sources_45arcsec.fits',
+        'low2-patch': 'RACS-low2_sources_patched.fits',
+        'low2-45as': 'RACS-low2_sources_45arcsec.fits',
+        'low2-45as-patch': 'RACS-low2_sources_45arcsec_patched.fits',
+        'low2-25as-patch': 'RACS-low2_sources_25arcsec_patched.fits',
         'low3': 'RACS-low3_sources.fits',
         'low3-scaled': 'RACS-low3_sources_scaled.fits',
         'mid1': 'AS110_Derived_Catalogue_racs_mid_sources_v01_15372.csv',
-        'mid1-25"': 'RACS-mid1_25arcsec_sources.csv',
+        'mid1-25as': 'RACS-mid1_25arcsec_sources.csv',
         'high1': 'RACS-high_sources_21-01-25.fits'
     },
     'catnorth': 'catnorth_qso_cand.fits',

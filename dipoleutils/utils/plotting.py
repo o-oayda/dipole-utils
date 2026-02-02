@@ -108,7 +108,10 @@ def smooth_map(
         smoothed_map_to_plot,
         nest=map_is_nested,
         fig=fig.number if fig is not None else None,
-        **kwargs
+        **{
+            'cb_orientation': 'vertical',
+            **kwargs
+        }
     )
     return None
 
@@ -135,3 +138,19 @@ def average_smooth_map(
         smoothed_map[p_index] = np.nanmean(healpy_map[disc] * weights[disc])
 
     return smoothed_map
+
+def density_map(
+        healpy_map: NDArray,
+        **projview_kwargs
+) -> None:
+    n_sources = int(np.nansum(healpy_map))
+    hp.projview(
+        healpy_map,
+        **{
+            'cbar': True,
+            'cb_orientation': 'vertical',
+            'unit': 'Source count per pixel',
+            'title': rf'Sources: {n_sources:,}',
+            **projview_kwargs
+        }
+    )
