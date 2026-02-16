@@ -41,5 +41,9 @@ fn_dict = {
     'nvss': 'Full_NVSS_combined_named.dat',
     'erass': 'eRASS1_Main.v1.1.fits',
     'qucats': 'QuCatS_Nakazono_and_Valenca_2024.csv',
-    'auger': 'events_a8_stripped.csv'
+    'auger': 'events_a8_stripped.csv',
+    'gleam': {
+        'egc': 'gleamegc.txt',
+        'x-dr2': 'VIII_113_catalog2.dat.gz.fits'
+    }
 }

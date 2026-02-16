@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from .file_names import fn_dict
 from astropy.table import Table
+from astropy.io import fits
+import numpy as np
 import platform
 import shutil
 import sys
@@ -196,13 +198,120 @@ class DataLoader:
         self._config_manager.clear_data_directory()
         print("Data directory configuration cleared")
 
-    def _load_file(self, full_path: str) -> Table:
+    def _load_file(self, full_path: str, columns: Optional[list[str]] = None) -> Table:
         file_extension = full_path.split('.')[-1]
 
         if file_extension == 'fits':
-            return Table.read(full_path)
+            return self._load_fits_file(full_path, columns)
         else:
-            return self._to_fits_table(full_path, file_extension)
+            table = self._to_fits_table(full_path, file_extension)
+            if columns is None:
+                return table
+            return table[columns]
+
+    def _load_fits_file(self, full_path: str, columns: Optional[list[str]] = None) -> Table:
+        """
+        Load a FITS file, with a fallback for ASCII FITS tables that encode
+        missing numeric values as placeholders like '---' without TNULL cards.
+        """
+        if columns is not None:
+            return self._load_fits_file_with_selected_columns(full_path, columns)
+
+        try:
+            return Table.read(full_path)
+        except ValueError as exc:
+            error_message = str(exc)
+            if (
+                "could not convert string to float" in error_message
+                and "TNULL" in error_message
+            ):
+                return self._load_ascii_fits_with_placeholder_nulls(full_path)
+            raise
+
+    def _load_fits_file_with_selected_columns(
+            self,
+            full_path: str,
+            columns: list[str]
+        ) -> Table:
+        """
+        Load only selected columns from a FITS table. This avoids parsing all
+        columns for very wide ASCII FITS catalogues.
+        """
+        missing_tokens = {"", "-", "--", "---"}
+        numeric_column_markers = {"F", "E", "D", "I"}
+
+        with fits.open(full_path, memmap=True) as hdul:
+            table_hdu = next(
+                (
+                    hdu for hdu in hdul
+                    if hasattr(hdu, "columns") and hdu.data is not None
+                ),
+                None,
+            )
+            if table_hdu is None:
+                raise ValueError(f"No table HDU found in FITS file: {full_path}")
+
+            available = set(table_hdu.columns.names)
+            missing_columns = [col for col in columns if col not in available]
+            if missing_columns:
+                raise ValueError(
+                    f"Requested columns not found in FITS file: {missing_columns}"
+                )
+
+            raw = table_hdu.data.view(np.ndarray)
+            table = Table({col: raw[col] for col in columns})
+            columns_by_name = {col.name: col for col in table_hdu.columns}
+
+            for col_name in columns:
+                column = columns_by_name[col_name]
+                format_marker = column.format.strip().upper()[:1]
+                if format_marker not in numeric_column_markers:
+                    continue
+
+                values = np.asarray(table[col_name])
+                if values.dtype.kind not in {"S", "U", "O"}:
+                    continue
+
+                stripped = np.char.strip(values.astype(str))
+                missing_mask = np.isin(stripped, tuple(missing_tokens))
+                normalized = np.where(missing_mask, "nan", stripped)
+                table[col_name] = normalized.astype(np.float64)
+
+        return table
+
+    def _load_ascii_fits_with_placeholder_nulls(self, full_path: str) -> Table:
+        """
+        Fallback loader for FITS ASCII tables with placeholder null markers.
+        Numeric columns are parsed as float and placeholder markers become NaN.
+        E.g. GLEAM-X DR2.
+        """
+        missing_tokens = {"", "-", "--", "---"}
+        numeric_column_markers = {"F", "E", "D", "I"}
+
+        with fits.open(full_path, memmap=True) as hdul:
+            table_hdu = next(
+                (
+                    hdu for hdu in hdul
+                    if hasattr(hdu, "columns") and hdu.data is not None
+                ),
+                None,
+            )
+            if table_hdu is None:
+                raise ValueError(f"No table HDU found in FITS file: {full_path}")
+
+            table = Table(table_hdu.data.view(np.ndarray))
+
+            for column in table_hdu.columns:
+                format_marker = column.format.strip().upper()[:1]
+                if format_marker not in numeric_column_markers:
+                    continue
+
+                values = np.char.strip(np.asarray(table[column.name]).astype(str))
+                missing_mask = np.isin(values, tuple(missing_tokens))
+                normalized = np.where(missing_mask, "nan", values)
+                table[column.name] = normalized.astype(np.float64)
+
+        return table
 
     def _to_fits_table(self, full_path: str, extension: str) -> Table:
         if extension == 'dat':
@@ -214,20 +323,35 @@ class DataLoader:
                 f'File type (.{extension}) not implemented.'
             )
 
-    def load(self) -> Union[Table, dict[str, Table]]:
+    def load(
+            self,
+            columns: Optional[Union[list[str], dict[str, list[str]]]] = None
+        ) -> Union[Table, dict[str, Table]]:
         """
         Load catalogue data from the configured directory.
         
+        Args:
+            columns: Optional list of column names to load. For multi-file
+                catalogues, this can also be a dict mapping file keys to column
+                lists (e.g. {'catalogue': ['ra', 'dec']}).
+
         Returns:
             For single-file catalogues: Table object
             For multi-file catalogues (like quaia): dict with keys 'catalogue' and 'selection_function' containing respective Tables
         """
         if self._is_multi_file_catalogue():
-            return self._load_multi_file_catalogue()
+            return self._load_multi_file_catalogue(columns)
         else:
-            return self._load_single_file_catalogue()
+            if isinstance(columns, dict):
+                raise ValueError(
+                    "For single-file catalogues, columns must be a list[str] or None."
+                )
+            return self._load_single_file_catalogue(columns)
     
-    def _load_single_file_catalogue(self) -> Table:
+    def _load_single_file_catalogue(
+            self,
+            columns: Optional[list[str]] = None
+        ) -> Table:
         """Load a single-file catalogue."""
         full_path = self._get_cat_path_in_config_dir()
         
@@ -244,9 +368,12 @@ class DataLoader:
                 )
 
         print(f"Loading file: {full_path}")
-        return self._load_file(full_path)
+        return self._load_file(full_path, columns)
     
-    def _load_multi_file_catalogue(self) -> dict[str, Table]:
+    def _load_multi_file_catalogue(
+            self,
+            columns: Optional[Union[list[str], dict[str, list[str]]]] = None
+        ) -> dict[str, Table]:
         """Load a multi-file catalogue (like quaia with cat and sel files)."""
         file_paths = self._get_file_paths_for_multi_file_catalogue()
         
@@ -287,7 +414,12 @@ class DataLoader:
         print(f"Loading {self.catalogue_name} files:")
         for key, path in file_paths.items():
             print(f"  Loading {key}: {path}")
-            tables[key] = self._load_file(path)
+            cols_for_file = None
+            if isinstance(columns, list):
+                cols_for_file = columns
+            elif isinstance(columns, dict):
+                cols_for_file = columns.get(key)
+            tables[key] = self._load_file(path, cols_for_file)
         
         return tables
 
