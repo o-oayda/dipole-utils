@@ -20,7 +20,8 @@ class CoordinateSystemParser:
                 ],
                 'polar': [  # Dec-like columns  
                     r'dec\b', r'declination', r'delta', r'δ',
-                    r'dec_deg', r'dec_rad', r'de\b'
+                    r'dec_deg', r'dec_rad',
+                    r'dedeg\b', r'derad\b', r'^de-$'
                 ]
             },
             'galactic': {
