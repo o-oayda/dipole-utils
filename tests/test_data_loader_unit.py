@@ -235,6 +235,34 @@ class TestDataLoaderUnit:
             
             mock_read.assert_called_once_with(test_file)
             assert result == mock_table
+
+    def test_load_file_fits_tnull_fallback(self):
+        """Test FITS fallback path when astropy fails on missing TNULL markers."""
+        loader = DataLoader('milliquas')
+        test_file = '/test/path/file.fits'
+        error_message = (
+            "could not convert string to float: np.bytes_(b'---'); "
+            "the header may be missing the necessary TNULL382 keyword"
+        )
+
+        with patch.object(Table, 'read', side_effect=ValueError(error_message)):
+            with patch.object(loader, '_load_ascii_fits_with_placeholder_nulls') as mock_fallback:
+                mock_table = Mock(spec=Table)
+                mock_fallback.return_value = mock_table
+
+                result = loader._load_file(test_file)
+
+        mock_fallback.assert_called_once_with(test_file)
+        assert result == mock_table
+
+    def test_load_file_fits_value_error_not_tnull(self):
+        """Test non-TNULL FITS ValueError is re-raised."""
+        loader = DataLoader('milliquas')
+        test_file = '/test/path/file.fits'
+
+        with patch.object(Table, 'read', side_effect=ValueError("some other parse error")):
+            with pytest.raises(ValueError, match="some other parse error"):
+                loader._load_file(test_file)
             
     @patch('os.path.exists')
     def test_load_file_dat(self, mock_exists):
@@ -392,6 +420,30 @@ class TestDataLoaderLoadMethods:
         mock_load_single.assert_called_once()
         mock_load_multi.assert_not_called()
         assert result == self.mock_table
+
+    @patch.object(DataLoader, '_is_multi_file_catalogue')
+    @patch.object(DataLoader, '_load_single_file_catalogue')
+    @patch.object(DataLoader, '_load_multi_file_catalogue')
+    def test_load_single_file_with_columns(self, mock_load_multi, mock_load_single, mock_is_multi):
+        """Test load method for single-file catalogue with selected columns."""
+        mock_is_multi.return_value = False
+        mock_load_single.return_value = self.mock_table
+
+        loader = DataLoader('milliquas')
+        result = loader.load(columns=['ra', 'dec'])
+
+        mock_load_single.assert_called_once_with(['ra', 'dec'])
+        mock_load_multi.assert_not_called()
+        assert result == self.mock_table
+
+    @patch.object(DataLoader, '_is_multi_file_catalogue')
+    def test_load_single_file_with_dict_columns_raises(self, mock_is_multi):
+        """Test single-file load rejects dict column configuration."""
+        mock_is_multi.return_value = False
+
+        loader = DataLoader('milliquas')
+        with pytest.raises(ValueError, match="single-file catalogues"):
+            loader.load(columns={'catalogue': ['ra', 'dec']})
         
     @patch.object(DataLoader, '_is_multi_file_catalogue')
     @patch.object(DataLoader, '_load_single_file_catalogue')
@@ -406,6 +458,22 @@ class TestDataLoaderLoadMethods:
         result = loader.load()
         
         mock_load_multi.assert_called_once()
+        mock_load_single.assert_not_called()
+        assert result == mock_result
+
+    @patch.object(DataLoader, '_is_multi_file_catalogue')
+    @patch.object(DataLoader, '_load_single_file_catalogue')
+    @patch.object(DataLoader, '_load_multi_file_catalogue')
+    def test_load_multi_file_with_column_mapping(self, mock_load_multi, mock_load_single, mock_is_multi):
+        """Test load method for multi-file catalogue with per-file columns."""
+        mock_is_multi.return_value = True
+        mock_result = {'catalogue': self.mock_table, 'selection_function': Mock(spec=Table)}
+        mock_load_multi.return_value = mock_result
+
+        loader = DataLoader('quaia', 'high')
+        result = loader.load(columns={'catalogue': ['ra', 'dec']})
+
+        mock_load_multi.assert_called_once_with({'catalogue': ['ra', 'dec']})
         mock_load_single.assert_not_called()
         assert result == mock_result
         
@@ -425,6 +493,23 @@ class TestDataLoaderLoadMethods:
             
         mock_load_file.assert_called_once_with('/data/milliquas/milliquas.fits')
         mock_print.assert_called_with('Loading file: /data/milliquas/milliquas.fits')
+        assert result == self.mock_table
+
+    @patch('os.path.exists')
+    @patch.object(DataLoader, '_get_cat_path_in_config_dir')
+    @patch.object(DataLoader, '_load_file')
+    def test_load_single_file_catalogue_exists_with_columns(self, mock_load_file, mock_get_path, mock_exists):
+        """Test loading single-file catalogue with selected columns when file exists."""
+        mock_get_path.return_value = '/data/milliquas/milliquas.fits'
+        mock_exists.return_value = True
+        mock_load_file.return_value = self.mock_table
+
+        loader = DataLoader('milliquas')
+
+        with patch('builtins.print'):
+            result = loader._load_single_file_catalogue(columns=['ra', 'dec'])
+
+        mock_load_file.assert_called_once_with('/data/milliquas/milliquas.fits', ['ra', 'dec'])
         assert result == self.mock_table
         
     @patch('os.path.exists')

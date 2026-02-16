@@ -296,6 +296,61 @@ class Masker:
         )
         self._update_mask(mask_indices)
 
+    def mask_equatorial_longitude(
+            self,
+            ra_min_deg: float,
+            ra_max_deg: float,
+            inverse_mask: bool = False
+    ) -> None:
+        """
+        Mask pixels in an equatorial-right-ascension interval.
+
+        The interval is inclusive and supports wrap-around across 0 deg.
+        For example, [330, 30] masks RA >= 330 or RA <= 30.
+
+        :param ra_min_deg: Lower RA bound in degrees.
+        :param ra_max_deg: Upper RA bound in degrees.
+        :param inverse_mask: If True, mask pixels outside the RA interval.
+        """
+        pixel_indices = np.arange(self.npix, dtype=np.int64)
+        theta, phi = hp.pix2ang(self.nside, pixel_indices)
+
+        lon_native_deg = np.rad2deg(phi)
+        lat_native_deg = 90.0 - np.rad2deg(theta)
+
+        if self.coordinate_system != 'equatorial':
+            ra_deg, _ = change_source_coordinates(
+                lon_native_deg,
+                lat_native_deg,
+                native_coordinates=self.coordinate_system,
+                target_coordinates='equatorial'
+            )
+        else:
+            ra_deg = lon_native_deg
+
+        ra_norm = np.mod(ra_deg, 360.0)
+        ra_min_norm = ra_min_deg % 360.0
+        ra_max_norm = ra_max_deg % 360.0
+
+        # Interpret a non-zero full-turn span (e.g. 0 -> 360) as all longitudes.
+        raw_delta = ra_max_deg - ra_min_deg
+        span = raw_delta % 360.0
+        if np.isclose(span, 0.0) and not np.isclose(raw_delta, 0.0):
+            selection = np.ones_like(ra_norm, dtype=bool)
+        elif ra_min_norm <= ra_max_norm:
+            selection = (ra_norm >= ra_min_norm) & (ra_norm <= ra_max_norm)
+        else:
+            selection = (ra_norm >= ra_min_norm) | (ra_norm <= ra_max_norm)
+
+        mask_indices = np.where(selection)[0].astype(np.int64)
+        if inverse_mask:
+            mask_indices = np.asarray(
+                list(self.all_indices - set(mask_indices)),
+                dtype=np.int64
+            )
+
+        self._update_mask(mask_indices)
+
     def get_masked_density_map(self) -> NDArray[np.float64]:
         """
         Return the density map with masked pixels set to NaN.

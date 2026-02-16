@@ -298,3 +298,80 @@ class TestMaskerUnit:
         masked_map = masker.get_masked_density_map()
         assert masked_map.dtype == np.float64
         assert np.all(masked_map == 5.0)  # Should preserve values
+
+    @patch('healpy.pix2ang')
+    def test_mask_equatorial_longitude_non_wrapped(self, mock_pix2ang):
+        """Mask a standard non-wrapping RA range."""
+        density_map = np.ones(hp.nside2npix(1), dtype=np.int_)
+        masker = Masker(density_map, 'equatorial')
+
+        ra_values = np.asarray([0, 20, 40, 60, 80, 100, 120, 140, 200, 280, 330, 350], dtype=np.float64)
+        lat_values = np.zeros_like(ra_values)
+        theta = np.deg2rad(90.0 - lat_values)
+        phi = np.deg2rad(ra_values)
+        mock_pix2ang.return_value = (theta, phi)
+
+        masker.mask_equatorial_longitude(40.0, 130.0)
+
+        expected_masked = {2, 3, 4, 5, 6}
+        assert masker.masked_pixel_indices == expected_masked
+
+    @patch('healpy.pix2ang')
+    def test_mask_equatorial_longitude_wrapped(self, mock_pix2ang):
+        """Mask a wrapping RA range crossing 0 degrees."""
+        density_map = np.ones(hp.nside2npix(1), dtype=np.int_)
+        masker = Masker(density_map, 'equatorial')
+
+        ra_values = np.asarray([0, 20, 40, 60, 80, 100, 120, 140, 200, 280, 330, 350], dtype=np.float64)
+        lat_values = np.zeros_like(ra_values)
+        theta = np.deg2rad(90.0 - lat_values)
+        phi = np.deg2rad(ra_values)
+        mock_pix2ang.return_value = (theta, phi)
+
+        masker.mask_equatorial_longitude(330.0, 30.0)
+
+        expected_masked = {0, 1, 10, 11}
+        assert masker.masked_pixel_indices == expected_masked
+
+    @patch('dipoleutils.utils.mask.change_source_coordinates')
+    @patch('healpy.pix2ang')
+    def test_mask_equatorial_longitude_with_conversion(self, mock_pix2ang, mock_change_coords):
+        """Mask RA range after converting native coordinates to equatorial."""
+        density_map = np.ones(hp.nside2npix(1), dtype=np.int_)
+        masker = Masker(density_map, 'galactic')
+
+        lon_native = np.asarray([0, 20, 40, 60, 80, 100, 120, 140, 200, 280, 330, 350], dtype=np.float64)
+        lat_native = np.zeros_like(lon_native)
+        theta = np.deg2rad(90.0 - lat_native)
+        phi = np.deg2rad(lon_native)
+        mock_pix2ang.return_value = (theta, phi)
+
+        ra_equatorial = np.asarray([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120], dtype=np.float64)
+        dec_equatorial = np.zeros_like(ra_equatorial)
+        mock_change_coords.return_value = (ra_equatorial, dec_equatorial)
+
+        masker.mask_equatorial_longitude(15.0, 25.0)
+
+        mock_change_coords.assert_called_once()
+        _, kwargs = mock_change_coords.call_args
+        assert kwargs['native_coordinates'] == 'galactic'
+        assert kwargs['target_coordinates'] == 'equatorial'
+        assert masker.masked_pixel_indices == {1}
+
+    @patch('healpy.pix2ang')
+    def test_mask_equatorial_longitude_inverse(self, mock_pix2ang):
+        """Inverse mask should mask outside the selected RA range."""
+        density_map = np.ones(hp.nside2npix(1), dtype=np.int_)
+        masker = Masker(density_map, 'equatorial')
+
+        ra_values = np.asarray([0, 20, 40, 60, 80, 100, 120, 140, 200, 280, 330, 350], dtype=np.float64)
+        lat_values = np.zeros_like(ra_values)
+        theta = np.deg2rad(90.0 - lat_values)
+        phi = np.deg2rad(ra_values)
+        mock_pix2ang.return_value = (theta, phi)
+
+        masker.mask_equatorial_longitude(40.0, 130.0, inverse_mask=True)
+
+        expected_unmasked = {2, 3, 4, 5, 6}
+        actual_unmasked = set(np.where(masker.mask_map)[0].tolist())
+        assert actual_unmasked == expected_unmasked
