@@ -22,16 +22,28 @@ def _load_a_team_sources() -> dict[str, dict[str, str]]:
 
 class Masker:
     def __init__(self,
-            density_map: NDArray[np.int_],
+            density_map: NDArray[np.int_] | list[NDArray[np.int_]],
             coordinate_system: str
     ) -> None:
         self.density_map = density_map
         self.coordinate_system = coordinate_system
-        self.mask_map = np.ones_like(density_map, dtype=bool)
+        n_pixels = self._validate_density_map()
+        self.mask_map = np.ones(shape=(n_pixels,), dtype=np.bool_)
         self.masked_pixel_indices = set()
         self.nside = hp.get_nside(density_map)
         self.npix = hp.nside2npix(self.nside)
         self.all_indices = set(np.arange(self.npix))
+
+    def _validate_density_map(self):
+        if type(self.density_map) is list:
+            npix = len(self.density_map[0])
+            assert np.asarray([
+                len(self.density_map[i]) == npix for i in range(len(self.density_map))
+            ]).all()
+            return npix
+        else:
+            npix = len(self.density_map)
+            return npix
 
     def _get_pole_vecs_in_native_coords(self, 
             pole_lon_deg: NDArray[np.float64],
@@ -351,15 +363,77 @@ class Masker:
 
         self._update_mask(mask_indices)
 
-    def get_masked_density_map(self) -> NDArray[np.float64]:
+    def mask_around_bright_sources(
+            self, 
+            brightness_cutoff: float,
+            mask_radius: float,
+            source_brightness, 
+            source_longitude, 
+            source_latitude
+    ) -> None:
+        '''
+        Assume longitude and latitude are the native coordinate system passed
+        at Masker init.
+
+        :param source_brightness: Array of all source brightnesses.
+        :param mask_radius: Masking disc radius in degrees.
+        '''
+        if mask_radius <= 0:
+            raise ValueError("mask_radius must be positive.")
+
+        source_brightness = np.asarray(source_brightness)
+        source_longitude = np.asarray(source_longitude)
+        source_latitude = np.asarray(source_latitude)
+
+        if not (
+            source_brightness.shape == source_longitude.shape
+            == source_latitude.shape
+        ):
+            raise ValueError(
+                "source_brightness, source_longitude, and source_latitude "
+                "must have matching shapes."
+            )
+
+        ipix = hp.ang2pix(self.nside, source_longitude, source_latitude, lonlat=True)
+        source_is_brighter = source_brightness > brightness_cutoff
+        if not np.any(source_is_brighter):
+            return
+
+        pixels_to_mask = np.unique(ipix[source_is_brighter])
+        
+        # Query discs centered on the bright-source pixels.
+        radius_rad = np.deg2rad(mask_radius)
+        mask_disc_indices = []
+        for pix in pixels_to_mask:
+            center_vec = hp.pix2vec(self.nside, int(pix))
+            mask_disc_indices.append(
+                hp.query_disc(self.nside, center_vec, radius=radius_rad)
+            )
+
+        if not mask_disc_indices:
+            return
+
+        mask_indices = np.unique(np.concatenate(mask_disc_indices)).astype(np.int64)
+        self._update_mask(mask_indices)
+
+
+    def get_masked_density_map(self) -> NDArray[np.float64] | list[NDArray[np.float64]]:
         """
         Return the density map with masked pixels set to NaN.
         
         :return: Density map with masked pixels as NaN
         """
-        masked_map = self.density_map.astype(np.float64)
-        masked_map[~self.mask_map] = np.nan
-        return masked_map
+        if type(self.density_map) is list:
+            out_maps = []
+            for dmap in self.density_map:
+                out_map = dmap.astype(np.float64)
+                out_map[~self.mask_map] = np.nan
+                out_maps.append(out_map)
+            return out_maps
+        else:
+            masked_map = self.density_map.astype(np.float64)
+            masked_map[~self.mask_map] = np.nan
+            return masked_map
 
     def get_masked_pixels(self) -> NDArray[np.int64]:
         return np.asarray(list(self.masked_pixel_indices), dtype=np.int64)

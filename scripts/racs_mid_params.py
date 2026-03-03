@@ -1,5 +1,6 @@
 from corner import corner
 from dipoleutils.utils.data_loader import DataLoader
+from dipoleutils.utils.mask import Masker
 from dipoleutils.utils.plotting import smooth_map
 from dipoleutils.utils.samples import CatalogueToMap
 import healpy as hp
@@ -17,28 +18,47 @@ otal_flux','peak_flux','e_peak_flux_pybdsf','e_peak_flux','maj_axis','min_axis',
 ength','sbid','e_flux_scale'
 '''
 
+NSIDE = 4
 data = DataLoader('racs', 'mid1').load()
 rmid = CatalogueToMap(data)
 rmid.catalogue['perc_err'] = rmid.catalogue['e_total_flux'] / rmid.catalogue['total_flux']
-psf_maj = rmid.make_parameter_map('psf_maj', coordinate_system='equatorial')
-psf_min = rmid.make_parameter_map('psf_min', coordinate_system='equatorial')
+psf_maj = rmid.make_parameter_map('psf_maj', coordinate_system='equatorial', nside=NSIDE)
+psf_min = rmid.make_parameter_map('psf_min', coordinate_system='equatorial', nside=NSIDE)
 psf_area = np.pi * psf_maj * psf_min
-noise = rmid.make_parameter_map('noise', coordinate_system='equatorial')
-era = rmid.make_parameter_map('e_ra', coordinate_system='equatorial')
-edec = rmid.make_parameter_map('e_dec', coordinate_system='equatorial')
-flux = rmid.make_parameter_map('perc_err', coordinate_system='equatorial')
-rmid.make_cut(column_name='total_flux', minimum=10, maximum=None)
-dmap = rmid.make_density_map('equatorial')
-
-processor = MapProcessor([psf_area, noise / psf_area, dmap, dmap])
-processor.mask(
-    classification=['galactic_plane', 'north_equatorial', 'south_equatorial'], 
-    output_frame='C', 
-    radius=[8, 70, 35]
+noise = rmid.make_parameter_map('noise', coordinate_system='equatorial', nside=NSIDE)
+era = rmid.make_parameter_map('e_ra', coordinate_system='equatorial', nside=NSIDE)
+edec = rmid.make_parameter_map('e_dec', coordinate_system='equatorial', nside=NSIDE)
+flux = rmid.make_parameter_map('perc_err', coordinate_system='equatorial', nside=NSIDE)
+snr_cell_dists = rmid.make_parameter_map(
+    ['peak_flux', 'noise'], 
+    coordinate_system='equatorial', 
+    operation='/',
+    nside=NSIDE
 )
-maps = processor.density_maps
+med_snr = np.asarray([np.median(i) for i in snr_cell_dists])
+rmid.make_cut(column_name='total_flux', minimum=10, maximum=None)
+dmap = rmid.make_density_map('equatorial', nside=NSIDE)
 
-hp.projview(maps[-1])
+cat = rmid.get_catalogue()
+masker = Masker([psf_area, noise, med_snr, dmap], coordinate_system='equatorial')
+masker.mask_galactic_plane(latitude_cut=8)
+masker.mask_equatorial_poles(north_radius=70)
+masker.mask_a_team_sources(
+    radius_deg=10,
+    source_names=['LMC', 'SMC']
+)
+# masker.mask_a_team_sources(
+#     radius_deg=2
+# )
+maps = masker.get_masked_density_map()
+
+hp.projview(
+    maps[-1], 
+    coord=['C', 'G'], 
+    graticule=True, 
+    graticule_labels=True,
+    longitude_grid_spacing=30
+)
 plt.show()
 
 plt.figure(figsize=(5,7))
