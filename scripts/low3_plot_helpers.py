@@ -48,6 +48,23 @@ def _compute_binned_mean(x_values, y_values, bin_width, x_min=0.0, x_max=24.0):
     return bin_centres, binned_mean
 
 
+def _collapse_duplicate_x(x_values, y_values):
+    x_values = np.asarray(x_values, dtype=float)
+    y_values = np.asarray(y_values, dtype=float)
+    if x_values.size == 0:
+        return x_values, y_values
+
+    unique_x, inverse_indices = np.unique(x_values, return_inverse=True)
+    collapsed_y = np.asarray(
+        [
+            np.mean(y_values[inverse_indices == unique_index], dtype=float)
+            for unique_index in range(unique_x.size)
+        ],
+        dtype=float,
+    )
+    return unique_x, collapsed_y
+
+
 def estimate_density_temperature_trend(
     density_map,
     temperature_map,
@@ -64,13 +81,12 @@ def estimate_density_temperature_trend(
         temperature_window_c / 2,
         trim_edges=True,
     )
-    return trend_temperature, temperature_moving_average
+    return _collapse_duplicate_x(trend_temperature, temperature_moving_average)
 
 
 def _interp_with_linear_edges(x_eval, x_data, y_data):
     x_eval = np.asarray(x_eval, dtype=float)
-    x_data = np.asarray(x_data, dtype=float)
-    y_data = np.asarray(y_data, dtype=float)
+    x_data, y_data = _collapse_duplicate_x(x_data, y_data)
 
     interpolated = np.interp(x_eval, x_data, y_data)
 

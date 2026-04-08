@@ -2,11 +2,12 @@ from dipoleutils.utils.data_loader import DataLoader
 from dipoleutils.utils.plotting import smooth_map
 from dipoleutils.utils.samples import CatalogueToMap
 from dipoleutils.utils.mask import Masker
-from dipoleutils.utils.weather import get_temperatures_for_mjd
+# from dipoleutils.utils.weather import get_temperatures_for_mjd
 from scripts.low3_plot_helpers import (
     apply_temperature_density_correction,
     plot_density_relationships,
 )
+from scripts.paf_temperature_lookup import get_mean_paf_temperatures_for_mjd
 import healpy as hp
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,7 +15,7 @@ import warnings
 from dipoleska.models.multipole import Multipole
 
 
-NSIDE = 64
+NSIDE = 128
 ASKAP_UTC_OFFSET_HOURS = 8.0
 FLUX_MIN_MJY = 15
 
@@ -31,11 +32,14 @@ low3.catalogue['Start_time_hours'] = np.mod(
     24.0,
 )
 try:
-    low3.catalogue['Temperature_C'] = get_temperatures_for_mjd(
+    # low3.catalogue['Temperature_C'] = get_temperatures_for_mjd(
+    #     low3.catalogue['Scan_start_MJD']
+    # )
+    low3.catalogue['Temperature_C'] = get_mean_paf_temperatures_for_mjd(
         low3.catalogue['Scan_start_MJD']
     )
 except Exception as exc:
-    warnings.warn(f'Unable to fetch weather data: {exc}')
+    warnings.warn(f'Unable to fetch PAF temperature data: {exc}')
     low3.catalogue['Temperature_C'] = np.full(len(low3.catalogue), np.nan)
 dmap = low3.make_density_map('equatorial', nside=NSIDE)
 dmap_scaled = low3_scaled.make_density_map('equatorial', nside=NSIDE)
@@ -67,7 +71,7 @@ sbidmap = low3.make_parameter_map(
 rmsmap = low3.make_parameter_map(
     column_name='perc_err',
     coordinate_system='equatorial',
-    operation='median',
+    operation='mean',
     nside=NSIDE
 )
 
@@ -134,8 +138,8 @@ smooth_map(dmap_temperature_corrected)
 # plt.close()
 plt.show()
 
-model = Multipole(dmap_temperature_corrected, ells=[1,2], likelihood='point')
-model.run_nested_sampling(step=True)
-model.corner_plot()
-model.sky_direction_posterior()
-plt.show()
+# model = Multipole(dmap_temperature_corrected, ells=[1,2], likelihood='point')
+# model.run_nested_sampling(step=True)
+# model.corner_plot()
+# model.sky_direction_posterior()
+# plt.show()
