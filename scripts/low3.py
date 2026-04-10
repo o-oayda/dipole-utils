@@ -15,17 +15,17 @@ import warnings
 from dipoleska.models.multipole import Multipole
 
 
-NSIDE = 128
+NSIDE = 64
 ASKAP_UTC_OFFSET_HOURS = 8.0
 FLUX_MIN_MJY = 15
 
 data = DataLoader('racs', 'low3').load()
 low3 = CatalogueToMap(data)
-data = DataLoader('racs', 'low3-scaled').load()
-low3_scaled = CatalogueToMap(data)
+# data = DataLoader('racs', 'low3-scaled').load()
+# low3_scaled = CatalogueToMap(data)
 
 low3.make_cut('Total_flux', minimum=FLUX_MIN_MJY, maximum=1000)
-low3_scaled.make_cut('Total_flux', minimum=FLUX_MIN_MJY, maximum=1000)
+# low3_scaled.make_cut('Total_flux', minimum=FLUX_MIN_MJY, maximum=1000)
 low3.catalogue['Start_time_hours'] = np.mod(
     np.asarray(low3.catalogue['Scan_start_MJD'], dtype=float) % 1.0 * 24.0
     + ASKAP_UTC_OFFSET_HOURS,
@@ -42,7 +42,7 @@ except Exception as exc:
     warnings.warn(f'Unable to fetch PAF temperature data: {exc}')
     low3.catalogue['Temperature_C'] = np.full(len(low3.catalogue), np.nan)
 dmap = low3.make_density_map('equatorial', nside=NSIDE)
-dmap_scaled = low3_scaled.make_density_map('equatorial', nside=NSIDE)
+# dmap_scaled = low3_scaled.make_density_map('equatorial', nside=NSIDE)
 low3.catalogue['perc_err'] = (
         low3.catalogue['E_Total_flux'] / low3.catalogue['Total_flux']
 ) * 100
@@ -68,14 +68,26 @@ sbidmap = low3.make_parameter_map(
     operation='mean',
     nside=NSIDE
 )
-rmsmap = low3.make_parameter_map(
+pmap = low3.make_parameter_map(
     column_name='perc_err',
     coordinate_system='equatorial',
     operation='mean',
     nside=NSIDE
 )
+rms_map = low3.make_parameter_map(
+    column_name='Noise',
+    coordinate_system='equatorial',
+    operation='mean',
+    nside=NSIDE
+)
+psf_map = low3.make_parameter_map(
+    column_name='PSF_Maj',
+    coordinate_system='equatorial',
+    operation='mean',
+    nside=NSIDE
+)
 
-mask = Masker([dmap, fmap, start_time_map, temperature_map, rmsmap], 'equatorial')
+mask = Masker([dmap, fmap, start_time_map, temperature_map, pmap, rms_map, psf_map], 'equatorial')
 mask.mask_galactic_plane(5)
 mask.mask_a_team_sources(radius_deg=3, source_names=['Cygnus A'])
 mask.mask_a_team_sources(radius_deg=2)
@@ -86,7 +98,7 @@ mask.mask_equatorial_poles(north_radius=42)
 #     low3.catalogue['RA'],
 #     low3.catalogue['Dec']
 # )
-dmap, fmap, start_time_map, temperature_map, rmsmap = mask.get_masked_density_map()
+dmap, fmap, start_time_map, temperature_map, pmap, rms_map, psf_map = mask.get_masked_density_map()
 
 cat = low3.get_catalogue()
 time_hours = np.asarray(cat['Start_time_hours'], dtype=float)

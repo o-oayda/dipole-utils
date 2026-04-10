@@ -44,19 +44,27 @@ def test_get_paf_temperatures_for_mjd_returns_all_36_temperatures(tmp_path):
     _make_full_antenna_set(tmp_path)
     obs_mjd = Time(datetime(2023, 12, 31, 16, 4, tzinfo=UTC)).mjd
 
-    result = get_paf_temperatures_for_mjd(obs_mjd, data_dir=tmp_path, max_time_offset_minutes=5.0)
+    result = get_paf_temperatures_for_mjd(
+        obs_mjd,
+        data_dir=tmp_path,
+        max_interpolation_gap_minutes=20.0,
+    )
 
     assert result.antenna_names == tuple(f"ak{antenna_index:02d}" for antenna_index in range(1, 37))
     assert result.temperatures_c.shape == (36,)
-    assert np.allclose(result.temperatures_c, np.arange(1.0, 37.0))
+    assert np.allclose(result.temperatures_c, np.arange(41.0, 77.0))
     assert np.allclose(result.matched_time_offsets_seconds, np.full(36, 240.0))
 
 
-def test_get_paf_temperatures_for_mjd_marks_missing_matches_as_nan(tmp_path):
+def test_get_paf_temperatures_for_mjd_marks_large_interpolation_gaps_as_nan(tmp_path):
     _make_full_antenna_set(tmp_path, minute_offset=30)
     obs_mjd = Time(datetime(2023, 12, 31, 16, 0, tzinfo=UTC)).mjd
 
-    result = get_paf_temperatures_for_mjd(obs_mjd, data_dir=tmp_path, max_time_offset_minutes=10.0)
+    result = get_paf_temperatures_for_mjd(
+        obs_mjd,
+        data_dir=tmp_path,
+        max_interpolation_gap_minutes=20.0,
+    )
 
     assert np.all(np.isnan(result.temperatures_c))
     assert np.all(np.isnan(result.matched_time_offsets_seconds))
@@ -70,10 +78,10 @@ def test_get_mean_paf_temperature_for_mjd_averages_finite_antenna_matches(tmp_pa
     mean_temperature = get_mean_paf_temperature_for_mjd(
         obs_mjd,
         data_dir=tmp_path,
-        max_time_offset_minutes=5.0,
+        max_interpolation_gap_minutes=20.0,
     )
 
-    assert np.isclose(mean_temperature, np.mean(np.arange(1.0, 37.0)))
+    assert np.isclose(mean_temperature, np.mean(np.arange(41.0, 77.0)))
 
 
 def test_get_mean_paf_temperatures_for_mjd_reuses_unique_timestamps(tmp_path):
@@ -83,10 +91,10 @@ def test_get_mean_paf_temperatures_for_mjd_reuses_unique_timestamps(tmp_path):
     temperatures = get_mean_paf_temperatures_for_mjd(
         [repeated_mjd, repeated_mjd],
         data_dir=tmp_path,
-        max_time_offset_minutes=5.0,
+        max_interpolation_gap_minutes=20.0,
     )
 
     assert np.allclose(
         temperatures,
-        np.full(2, np.mean(np.arange(1.0, 37.0))),
+        np.full(2, np.mean(np.arange(41.0, 77.0))),
     )

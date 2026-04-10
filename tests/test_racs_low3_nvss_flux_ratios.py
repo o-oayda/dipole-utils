@@ -34,26 +34,47 @@ def test_build_crossmatched_flux_ratio_products_adds_tile_temperature(monkeypatc
         fake_get_mean_paf_temperatures_for_mjd,
     )
 
-    matched_table, tile_table, ratio_payload = (
+    matched_table, temperature_bin_table, ratio_payload = (
         racs_low3_nvss_flux_ratios.build_crossmatched_flux_ratio_products(
             racs_catalogue,
             nvss_catalogue,
             match_radius_arcsec=5.0,
+            bootstrap_resamples=32,
         )
-    )
-
-    assert len(matched_table) == 2
-    assert np.array_equal(np.asarray(tile_table["SBID"]), np.asarray([111, 222]))
-    assert np.allclose(np.asarray(tile_table["Scan_start_MJD"], dtype=float), [60000.0, 60001.0])
-    assert np.allclose(np.asarray(tile_table["Mean_PAF_Temperature_C"], dtype=float), [10.0, 11.0])
-    assert np.array_equal(np.asarray(tile_table["N_Matches"]), np.asarray([1, 1]))
-    assert np.allclose(
-        np.asarray(tile_table["Std_Flux_ratio_RACS_over_NVSS_scaled"], dtype=float),
-        [0.0, 0.0],
     )
 
     expected_scaled_nvss = racs_low3_nvss_flux_ratios.scale_flux_density([80.0, 160.0])
     expected_ratio = np.asarray([100.0, 200.0]) / expected_scaled_nvss
+
+    assert len(matched_table) == 2
+    assert np.allclose(
+        np.asarray(temperature_bin_table["Temperature_bin_start_C"], dtype=float),
+        [10.0, 11.0],
+    )
+    assert np.allclose(
+        np.asarray(temperature_bin_table["Temperature_bin_center_C"], dtype=float),
+        [10.5, 11.5],
+    )
+    assert np.array_equal(np.asarray(temperature_bin_table["N_Tiles"]), np.asarray([1, 1]))
+    assert np.array_equal(np.asarray(temperature_bin_table["N_Matches"]), np.asarray([1, 1]))
+    assert np.allclose(
+        np.asarray(temperature_bin_table["Std_Flux_ratio_RACS_over_NVSS_scaled"], dtype=float),
+        [0.0, 0.0],
+    )
+    assert np.allclose(
+        np.asarray(
+            temperature_bin_table["Bootstrap_uncertainty_on_mean_Flux_ratio"],
+            dtype=float,
+        ),
+        [0.0],
+    )
+    assert np.allclose(
+        np.asarray(
+            temperature_bin_table["Mean_Flux_ratio_RACS_over_NVSS_scaled"],
+            dtype=float,
+        ),
+        expected_ratio,
+    )
     assert np.allclose(
         np.asarray(matched_table["Scaled_NVSS_flux_943p5MHz"], dtype=float),
         expected_scaled_nvss,
@@ -70,3 +91,6 @@ def test_build_crossmatched_flux_ratio_products_adds_tile_temperature(monkeypatc
     ratio_arrays_by_sbid = ratio_payload["ratio_arrays_by_sbid"]
     assert np.allclose(ratio_arrays_by_sbid[111], [expected_ratio[0]])
     assert np.allclose(ratio_arrays_by_sbid[222], [expected_ratio[1]])
+    ratio_arrays_by_temperature_bin = ratio_payload["ratio_arrays_by_temperature_bin"]
+    assert np.allclose(ratio_arrays_by_temperature_bin[10.0], [expected_ratio[0]])
+    assert np.allclose(ratio_arrays_by_temperature_bin[11.0], [expected_ratio[1]])

@@ -18,6 +18,7 @@ MJD_UNIX_EPOCH_OFFSET_DAYS = 40587.0
 ANTENNA_NAME_PATTERN = re.compile(r"(ak\d{2})")
 ASKAP_LOCAL_UTC_OFFSET_HOURS = 8.0
 DEFAULT_PAF_MEAN_CADENCE_MINUTES = 10.0
+DEFAULT_MAX_INTERPOLATION_GAP_MINUTES = 20.0
 
 
 @dataclass(frozen=True)
@@ -149,21 +150,75 @@ def _unix_seconds_to_local_hour_of_day(unix_seconds: np.ndarray) -> np.ndarray:
     )
 
 
+def _interpolate_temperature_at_unix_seconds(
+    unix_seconds: np.ndarray,
+    temperatures_c: np.ndarray,
+    target_unix_seconds: float,
+    max_interpolation_gap_seconds: float,
+) -> tuple[float, float, float]:
+    if unix_seconds.size == 0:
+        return np.nan, np.nan, np.nan
+
+    insertion_index = int(np.searchsorted(unix_seconds, target_unix_seconds))
+    if insertion_index < unix_seconds.size and unix_seconds[insertion_index] == target_unix_seconds:
+        return (
+            float(temperatures_c[insertion_index]),
+            0.0,
+            float(unix_seconds[insertion_index]),
+        )
+
+    if insertion_index == 0 or insertion_index == unix_seconds.size:
+        return np.nan, np.nan, np.nan
+
+    previous_index = insertion_index - 1
+    next_index = insertion_index
+    previous_unix_seconds = float(unix_seconds[previous_index])
+    next_unix_seconds = float(unix_seconds[next_index])
+    interpolation_gap_seconds = next_unix_seconds - previous_unix_seconds
+    if interpolation_gap_seconds <= 0.0 or interpolation_gap_seconds > max_interpolation_gap_seconds:
+        return np.nan, np.nan, np.nan
+
+    previous_temperature_c = float(temperatures_c[previous_index])
+    next_temperature_c = float(temperatures_c[next_index])
+    interpolation_fraction = (
+        (target_unix_seconds - previous_unix_seconds) / interpolation_gap_seconds
+    )
+    interpolated_temperature_c = previous_temperature_c + interpolation_fraction * (
+        next_temperature_c - previous_temperature_c
+    )
+
+    previous_offset_seconds = abs(target_unix_seconds - previous_unix_seconds)
+    next_offset_seconds = abs(next_unix_seconds - target_unix_seconds)
+    if previous_offset_seconds <= next_offset_seconds:
+        nearest_offset_seconds = previous_offset_seconds
+        nearest_unix_seconds = previous_unix_seconds
+    else:
+        nearest_offset_seconds = next_offset_seconds
+        nearest_unix_seconds = next_unix_seconds
+
+    return (
+        float(interpolated_temperature_c),
+        float(nearest_offset_seconds),
+        float(nearest_unix_seconds),
+    )
+
+
 def get_paf_temperatures_for_mjd(
     obs_mjd: float,
     data_dir: Path | str = DEFAULT_PAF_TEMPERATURE_DIR,
-    max_time_offset_minutes: float = 5.0,
+    max_interpolation_gap_minutes: float = DEFAULT_MAX_INTERPOLATION_GAP_MINUTES,
 ) -> PafTemperatureMatch:
     """
     Return one temperature per ASKAP antenna for a single observation timestamp.
 
     The PAF exports are sparse: valid readings appear every several minutes, with
-    blank rows filling the 1-minute grid. This function therefore matches each
-    antenna to the nearest valid sample within ``max_time_offset_minutes`` and
-    returns ``NaN`` where no sample is close enough.
+    blank rows filling the 1-minute grid. This function linearly interpolates
+    each antenna temperature between the bracketing valid samples. If the target
+    timestamp falls outside the sampled range, or the bracket gap is larger than
+    ``max_interpolation_gap_minutes``, that antenna returns ``NaN``.
     """
     target_unix_seconds = _mjd_to_unix_seconds(obs_mjd)
-    max_time_offset_seconds = float(max_time_offset_minutes) * 60.0
+    max_interpolation_gap_seconds = float(max_interpolation_gap_minutes) * 60.0
 
     antenna_names: list[str] = []
     temperatures_c: list[float] = []
@@ -172,33 +227,19 @@ def get_paf_temperatures_for_mjd(
 
     for antenna_name, unix_seconds, antenna_temperatures in load_paf_temperature_series(data_dir):
         antenna_names.append(antenna_name)
-        if unix_seconds.size == 0:
-            temperatures_c.append(np.nan)
-            matched_time_offsets_seconds.append(np.nan)
-            matched_unix_seconds.append(np.nan)
-            continue
-
-        insertion_index = int(np.searchsorted(unix_seconds, target_unix_seconds))
-        candidate_indices: list[int] = []
-        if insertion_index < unix_seconds.size:
-            candidate_indices.append(insertion_index)
-        if insertion_index > 0:
-            candidate_indices.append(insertion_index - 1)
-
-        best_index = min(
-            candidate_indices,
-            key=lambda index: abs(unix_seconds[index] - target_unix_seconds),
+        (
+            interpolated_temperature_c,
+            nearest_offset_seconds,
+            nearest_unix_seconds,
+        ) = _interpolate_temperature_at_unix_seconds(
+            unix_seconds,
+            antenna_temperatures,
+            target_unix_seconds,
+            max_interpolation_gap_seconds,
         )
-        best_offset_seconds = abs(unix_seconds[best_index] - target_unix_seconds)
-        if best_offset_seconds > max_time_offset_seconds:
-            temperatures_c.append(np.nan)
-            matched_time_offsets_seconds.append(np.nan)
-            matched_unix_seconds.append(np.nan)
-            continue
-
-        temperatures_c.append(float(antenna_temperatures[best_index]))
-        matched_time_offsets_seconds.append(float(best_offset_seconds))
-        matched_unix_seconds.append(float(unix_seconds[best_index]))
+        temperatures_c.append(interpolated_temperature_c)
+        matched_time_offsets_seconds.append(nearest_offset_seconds)
+        matched_unix_seconds.append(nearest_unix_seconds)
 
     return PafTemperatureMatch(
         antenna_names=tuple(antenna_names),
@@ -211,12 +252,12 @@ def get_paf_temperatures_for_mjd(
 def get_mean_paf_temperature_for_mjd(
     obs_mjd: float,
     data_dir: Path | str = DEFAULT_PAF_TEMPERATURE_DIR,
-    max_time_offset_minutes: float = 5.0,
+    max_interpolation_gap_minutes: float = DEFAULT_MAX_INTERPOLATION_GAP_MINUTES,
 ) -> float:
     match = get_paf_temperatures_for_mjd(
         obs_mjd,
         data_dir=data_dir,
-        max_time_offset_minutes=max_time_offset_minutes,
+        max_interpolation_gap_minutes=max_interpolation_gap_minutes,
     )
     finite_temperatures = match.temperatures_c[np.isfinite(match.temperatures_c)]
     if finite_temperatures.size == 0:
@@ -227,7 +268,7 @@ def get_mean_paf_temperature_for_mjd(
 def get_mean_paf_temperatures_for_mjd(
     mjd_values: Iterable[float],
     data_dir: Path | str = DEFAULT_PAF_TEMPERATURE_DIR,
-    max_time_offset_minutes: float = 5.0,
+    max_interpolation_gap_minutes: float = DEFAULT_MAX_INTERPOLATION_GAP_MINUTES,
 ) -> np.ndarray:
     mjd_array = np.asarray(mjd_values, dtype=float)
     if mjd_array.size == 0:
@@ -239,7 +280,7 @@ def get_mean_paf_temperatures_for_mjd(
             get_mean_paf_temperature_for_mjd(
                 obs_mjd,
                 data_dir=data_dir,
-                max_time_offset_minutes=max_time_offset_minutes,
+                max_interpolation_gap_minutes=max_interpolation_gap_minutes,
             )
             for obs_mjd in unique_mjd
         ],
