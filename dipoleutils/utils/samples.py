@@ -1,4 +1,5 @@
 from astropy.table import Table
+from importlib.resources import as_file, files
 from numpy.typing import NDArray
 import numpy as np
 import json
@@ -16,6 +17,7 @@ from .math import (
     vectorised_quadrupole_tensor,
     vectorised_spherical_to_cartesian
 )
+from .crossmatch import CrossMatch
 from scipy.stats import poisson
 
 
@@ -33,6 +35,8 @@ class CatalogueToMap:
         self.coordinate_columns = {}
         self.map_coordinate_system = None
         self.parser = CoordinateSystemParser()
+        self.local_sources_crossmatch: CrossMatch | None = None
+        self.local_common_sources: Table | None = None
         self._parse_angular_coordinates()
     
     def _parse_angular_coordinates(self):
@@ -518,6 +522,57 @@ class CatalogueToMap:
             nest=nest
         )
         self.catalogue.add_column(pixel_indices, name='pixel_indices')
+
+    def crossmatch_local_sources(self, coordinate_system: str, radius: float) -> None:
+        local_table = self._load_local_table()
+        crossmatcher = CrossMatch(self.catalogue, local_table, coordinate_system)
+        source_name_B_column = (
+            'source_name' if 'source_name' in local_table.colnames else 'source'
+        )
+        crossmatcher.cross_match(
+            radius,
+            source_name_B_column=source_name_B_column
+        )
+        self.local_sources_crossmatch = crossmatcher
+        self.local_common_sources = crossmatcher.get_common_sources()
+
+        valid_crossmatch_table = crossmatcher.get_crossmatch_table(only_valid=True)
+        matched_source_indices = np.asarray(
+            valid_crossmatch_table['source_idx_A'],
+            dtype=np.int64
+        )
+        n_matches = crossmatcher.get_number_of_matches()
+
+        if n_matches == 0:
+            print('Identified 0 local matches; removed 0 sources from the catalogue.')
+            return
+
+        keep_mask = np.ones(len(self.catalogue), dtype=bool)
+        keep_mask[matched_source_indices] = False
+        self.catalogue = cast(Table, self.catalogue[keep_mask])
+        print(
+            f'Identified {n_matches} local matches; '
+            f'removed {n_matches} sources from the catalogue.'
+        )
+
+    def _load_local_table(self) -> Table:
+        packaged_resource = files('dipoleutils.data').joinpath(
+            'local_sources_ned_2mrs.csv'
+        )
+        if packaged_resource.is_file():
+            with as_file(packaged_resource) as resource_path:
+                return Table.read(resource_path, format='csv')
+
+        repo_fallback = (
+            Path(__file__).resolve().parents[2] / 'data' / 'local_sources_ned_2mrs.csv'
+        )
+        if repo_fallback.is_file():
+            return Table.read(repo_fallback, format='csv')
+
+        raise FileNotFoundError(
+            'Could not locate local source catalogue '
+            "'local_sources_ned_2mrs.csv' in package data or the source tree."
+        )
 
 class SimulatedDipoleMap:
     def __init__(self, nside: int = 64) -> None:

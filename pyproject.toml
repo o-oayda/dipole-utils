@@ -5,6 +5,10 @@ description = "Utilities for fitting dipoles and higher order harmonics to healp
 authors = ["Oliver Oayda <oaydaoliver@gmail.com>"]
 readme = "README.md"
 packages = [{ include = "dipoleutils" }]
+include = [
+    "dipoleutils/data/*.json",
+    "dipoleutils/data/*.csv",
+]
 
 [tool.poetry.dependencies]
 python = ">=3.12"
