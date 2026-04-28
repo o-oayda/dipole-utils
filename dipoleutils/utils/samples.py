@@ -523,7 +523,12 @@ class CatalogueToMap:
         )
         self.catalogue.add_column(pixel_indices, name='pixel_indices')
 
-    def crossmatch_local_sources(self, coordinate_system: str, radius: float) -> None:
+    def crossmatch_local_sources(
+            self,
+            coordinate_system: str,
+            radius: float,
+            source_name_A_column: str | None = None
+    ) -> None:
         local_table = self._load_local_table()
         crossmatcher = CrossMatch(self.catalogue, local_table, coordinate_system)
         source_name_B_column = (
@@ -531,6 +536,7 @@ class CatalogueToMap:
         )
         crossmatcher.cross_match(
             radius,
+            source_name_A_column=source_name_A_column,
             source_name_B_column=source_name_B_column
         )
         self.local_sources_crossmatch = crossmatcher
