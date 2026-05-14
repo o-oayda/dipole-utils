@@ -3,6 +3,7 @@ dipole-utils: Utilities for fitting dipoles and higher order harmonics to healpy
 """
 
 from dipoleutils.utils.data_loader import _config_manager, CatalogueValidationError
+from dipoleutils.utils.racs import RACS
 
 def configure_data_directory(path: str) -> None:
     """
@@ -36,5 +37,6 @@ __all__ = [
     'configure_data_directory',
     'get_data_directory', 
     'clear_data_directory_config',
-    'CatalogueValidationError'
+    'CatalogueValidationError',
+    'RACS',
 ]
