@@ -9,6 +9,9 @@ import healpy as hp
 from dipoleutils.utils.physics import omega_to_theta
 
 
+DEFAULT_BOOTSTRAP_RESAMPLES = 1000
+
+
 def plot_log_log_histogram(
         data: Sequence[float] | NDArray[np.floating],
         bins: int | Sequence[float] = 10,
@@ -85,6 +88,163 @@ def plot_log_log_histogram(
     ax.set_yscale('log', nonpositive='clip')
 
     return counts, bin_edges, patches
+
+
+def _compute_binned_mean_statistics(
+        x: Sequence[float] | NDArray[np.floating],
+        y: Sequence[float] | NDArray[np.floating],
+        bins: int | Sequence[float] = 10,
+        x_range: tuple[float, float] | None = None,
+        log_bins: bool = False,
+        bootstrap_resamples: int | None = DEFAULT_BOOTSTRAP_RESAMPLES,
+        bootstrap_seed: int = 0,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+    x_values = np.ravel(np.asarray(x, dtype=np.float64))
+    y_values = np.ravel(np.asarray(y, dtype=np.float64))
+
+    if x_values.size != y_values.size:
+        raise ValueError('`x` and `y` must contain the same number of elements.')
+
+    valid = np.isfinite(x_values) & np.isfinite(y_values)
+    x_values = x_values[valid]
+    y_values = y_values[valid]
+
+    if x_range is not None:
+        x_min, x_max = map(float, x_range)
+        if x_min >= x_max:
+            raise ValueError('`x_range` must satisfy xmin < xmax.')
+        in_range = (x_values >= x_min) & (x_values <= x_max)
+        x_values = x_values[in_range]
+        y_values = y_values[in_range]
+    else:
+        x_min = float(np.min(x_values)) if x_values.size else np.nan
+        x_max = float(np.max(x_values)) if x_values.size else np.nan
+
+    if x_values.size == 0:
+        raise ValueError('No finite samples remain after applying filters.')
+
+    if isinstance(bins, (int, np.integer)):
+        if int(bins) < 1:
+            raise ValueError('Number of bins must be a positive integer.')
+        if x_range is None:
+            x_min = float(np.min(x_values))
+            x_max = float(np.max(x_values))
+        if log_bins:
+            if x_min <= 0 or np.any(x_values <= 0):
+                raise ValueError('Log-spaced bins require strictly positive `x` values.')
+            bin_edges = np.logspace(np.log10(x_min), np.log10(x_max), int(bins) + 1)
+        else:
+            bin_edges = np.linspace(x_min, x_max, int(bins) + 1)
+    else:
+        bin_edges = np.asarray(bins, dtype=np.float64)
+        if bin_edges.ndim != 1 or bin_edges.size < 2:
+            raise ValueError('Bin edges must be a one-dimensional array of length >= 2.')
+        if not np.all(np.isfinite(bin_edges)):
+            raise ValueError('Bin edges must be finite.')
+        if np.any(np.diff(bin_edges) <= 0):
+            raise ValueError('Bin edges must be strictly increasing.')
+        if log_bins and np.any(bin_edges <= 0):
+            raise ValueError('Log-spaced bins require strictly positive bin edges.')
+
+    rng = np.random.default_rng(bootstrap_seed)
+    bin_centres: list[float] = []
+    mean_y: list[float] = []
+    mean_y_err: list[float] = []
+
+    for bin_index in range(bin_edges.size - 1):
+        left_edge = bin_edges[bin_index]
+        right_edge = bin_edges[bin_index + 1]
+        in_bin = (x_values >= left_edge) & (
+            x_values < right_edge
+            if bin_index < bin_edges.size - 2
+            else x_values <= right_edge
+        )
+        y_in_bin = y_values[in_bin]
+        if y_in_bin.size == 0:
+            continue
+
+        if bootstrap_resamples is None or int(bootstrap_resamples) < 2 or y_in_bin.size <= 1:
+            bootstrap_error = 0.0
+        else:
+            bootstrap_means = np.empty(int(bootstrap_resamples), dtype=np.float64)
+            for bootstrap_index in range(int(bootstrap_resamples)):
+                sampled_y = rng.choice(y_in_bin, size=y_in_bin.size, replace=True)
+                bootstrap_means[bootstrap_index] = np.mean(sampled_y)
+            bootstrap_error = float(np.std(bootstrap_means, ddof=1))
+
+        if log_bins:
+            bin_centre = float(np.sqrt(left_edge * right_edge))
+        else:
+            bin_centre = float(0.5 * (left_edge + right_edge))
+
+        bin_centres.append(bin_centre)
+        mean_y.append(float(np.mean(y_in_bin)))
+        mean_y_err.append(bootstrap_error)
+
+    return (
+        np.asarray(bin_centres, dtype=np.float64),
+        np.asarray(mean_y, dtype=np.float64),
+        np.asarray(mean_y_err, dtype=np.float64),
+    )
+
+
+def plot_binned_mean(
+        x: Sequence[float] | NDArray[np.floating],
+        y: Sequence[float] | NDArray[np.floating],
+        bins: int | Sequence[float] = 10,
+        x_range: tuple[float, float] | None = None,
+        log_bins: bool = False,
+        bootstrap_resamples: int | None = DEFAULT_BOOTSTRAP_RESAMPLES,
+        bootstrap_seed: int = 0,
+        ax=None,
+        **errorbar_kwargs
+    ):
+    '''
+    Plot the mean of ``y`` in bins of ``x``, with optional bootstrap errors.
+
+    :param x: Input x-values used for bin assignment.
+    :param y: Input y-values averaged within each x-bin.
+    :param bins: Either the number of bins (int) or an explicit sequence of bin
+        edges.
+    :param x_range: Inclusive ``(xmin, xmax)`` domain restriction applied
+        before binning. When ``bins`` is an int, this range is also used to
+        construct the bin edges.
+    :param log_bins: If True, construct log-spaced bins and use geometric bin
+        centres. Requires strictly positive x-values in the active domain.
+    :param bootstrap_resamples: Number of within-bin bootstrap resamples used to
+        estimate one-sigma uncertainty on the mean. Defaults to
+        ``DEFAULT_BOOTSTRAP_RESAMPLES``. If None or less than 2, zero errors are
+        returned.
+    :param bootstrap_seed: Random seed for bootstrap resampling.
+    :param ax: Optional matplotlib axes to plot on. Defaults to ``plt.gca()``.
+    :param errorbar_kwargs: Extra keyword arguments forwarded to
+        ``Axes.errorbar``.
+    :return: Tuple of ``(bin_centres, mean_y, mean_y_err, errorbar_container)``.
+    '''
+    if 'yerr' in errorbar_kwargs:
+        raise TypeError('Pass bootstrap uncertainty via `bootstrap_resamples`, not `yerr`.')
+
+    bin_centres, mean_y, mean_y_err = _compute_binned_mean_statistics(
+        x,
+        y,
+        bins=bins,
+        x_range=x_range,
+        log_bins=log_bins,
+        bootstrap_resamples=bootstrap_resamples,
+        bootstrap_seed=bootstrap_seed,
+    )
+    axis = plt.gca() if ax is None else ax
+    errorbar_kwargs.setdefault('fmt', 'o')
+    errorbar_kwargs.setdefault('capsize', 3)
+    errorbar_kwargs.setdefault('markersize', 6)
+    errorbar_kwargs.setdefault('markeredgewidth', 0.0)
+    errorbar_container = axis.errorbar(
+        bin_centres,
+        mean_y,
+        yerr=mean_y_err,
+        **errorbar_kwargs
+    )
+    return bin_centres, mean_y, mean_y_err, errorbar_container
 
 def smooth_map(
         healpy_map: NDArray,
