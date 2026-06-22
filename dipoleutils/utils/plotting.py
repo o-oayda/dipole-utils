@@ -246,6 +246,75 @@ def plot_binned_mean(
     )
     return bin_centres, mean_y, mean_y_err, errorbar_container
 
+def plot_binned_quantile(
+    x,
+    y,
+    bins=20,
+    quantile=0.5,
+    min_count=1,
+    n_bootstrap=0,
+    ax=None,
+    plot=True,
+    **kwargs,
+):
+    """Plot an arbitrary quantile of y in bins of x.
+
+    Returns
+    -------
+    bin_centres, y_quantile, y_quantile_err, counts
+        ``y_quantile_err`` is NaN unless ``n_bootstrap > 0``.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    finite = np.isfinite(x) & np.isfinite(y)
+    x = x[finite]
+    y = y[finite]
+
+    if not 0 <= quantile <= 1:
+        raise ValueError("quantile must be in [0, 1].")
+
+    bin_edges = np.histogram_bin_edges(x, bins=bins)
+    bin_centres = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    y_quantile = np.full(bin_centres.shape, np.nan, dtype=float)
+    y_quantile_err = np.full(bin_centres.shape, np.nan, dtype=float)
+    counts = np.zeros(bin_centres.shape, dtype=int)
+
+    bin_index = np.digitize(x, bin_edges) - 1
+    bin_index[x == bin_edges[-1]] = bin_centres.size - 1
+
+    rng = np.random.default_rng()
+    for i in range(bin_centres.size):
+        values = y[bin_index == i]
+        counts[i] = values.size
+        if values.size < min_count:
+            continue
+
+        y_quantile[i] = np.nanquantile(values, quantile)
+        if n_bootstrap > 0 and values.size > 1:
+            draws = rng.choice(values, size=(n_bootstrap, values.size), replace=True)
+            y_quantile_err[i] = np.nanstd(
+                np.nanquantile(draws, quantile, axis=1),
+                ddof=1,
+            )
+
+    if plot:
+        if ax is None:
+            ax = plt.gca()
+        valid = np.isfinite(y_quantile)
+        if np.any(np.isfinite(y_quantile_err)):
+            ax.errorbar(
+                bin_centres[valid],
+                y_quantile[valid],
+                yerr=y_quantile_err[valid],
+                marker="o",
+                linestyle="-",
+                **kwargs,
+            )
+        else:
+            ax.scatter(bin_centres[valid], y_quantile[valid], **kwargs)
+
+    return bin_centres, y_quantile, y_quantile_err, counts
+
 def smooth_map(
         healpy_map: NDArray,
         weights: NDArray | None = None,
