@@ -2,8 +2,9 @@
 dipole-utils: Utilities for fitting dipoles and higher order harmonics to healpy maps.
 """
 
-from dipoleutils.utils.data_loader import _config_manager, CatalogueValidationError
+from dipoleutils.utils.data_loader import _config_manager, CatalogueValidationError, DataLoader
 from dipoleutils.utils.racs import RACS
+from dipoleutils.utils.samples import CatalogueToMap
 
 def configure_data_directory(path: str) -> None:
     """
@@ -39,4 +40,5 @@ __all__ = [
     'clear_data_directory_config',
     'CatalogueValidationError',
     'RACS',
+    'CatalogueToMap'
 ]

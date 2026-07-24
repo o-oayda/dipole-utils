@@ -318,6 +318,8 @@ class DataLoader:
             return Table.read(full_path, format='ascii')
         elif extension == 'csv':
             return Table.read(full_path, format='csv')
+        elif extension == 'ecsv':
+            return Table.read(full_path, format='ecsv', engine='pyarrow')
         else:
             raise NotImplementedError(
                 f'File type (.{extension}) not implemented.'

@@ -46,5 +46,8 @@ fn_dict = {
     'gleam': {
         'egc': 'gleamegc.txt',
         'x-dr2': 'VIII_113_catalog2.dat.gz.fits'
+    },
+    'emu': {
+        'apr-26': 'emucat_13-apr-26.ecsv'
     }
 }

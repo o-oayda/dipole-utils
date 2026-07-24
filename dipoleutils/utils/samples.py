@@ -1,3 +1,4 @@
+from astropy.coordinates import Angle
 from astropy.table import Table
 from importlib.resources import as_file, files
 from numpy.typing import NDArray
@@ -280,8 +281,15 @@ class CatalogueToMap:
                 f"Could not retrieve coordinates for system '{system_to_use}'."
             )
         azimuthal_col, polar_col = coords
-        
-        azimuthal_angles = np.asarray(self.catalogue[azimuthal_col], dtype=float)
+
+        # properly handle hms strings
+        try:
+            azimuthal_angles = np.asarray(self.catalogue[azimuthal_col], dtype=float)
+        except ValueError:
+            azimuthal_angles = np.asarray(
+                Angle(self.catalogue[azimuthal_col], unit="hourangle").degree
+            )
+
         polar_angles = np.asarray(self.catalogue[polar_col], dtype=float)
 
         print(
