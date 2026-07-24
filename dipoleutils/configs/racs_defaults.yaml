@@ -160,7 +160,7 @@ low3-scaled:
     mask_around_bright_sources: null
 
 mid1:
-  flux_column: total_flux
+  flux_column: Total_flux
   flux_min: 15
   flux_max: 1000
   nside: 64
