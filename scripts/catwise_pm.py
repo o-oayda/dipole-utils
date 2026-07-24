@@ -8,7 +8,7 @@ import healpy as hp
 
 # DMAP_PATH = '/Users/ooay3125/Documents/catsim/catwise_S21_probably.npy'
 # MASK_PATH = '/Users/ooay3125/Documents/catsim/src/catsim/data/mask/S21_CatWISE_Mask_nside64.npy'
-SNR_MIN = 3
+SNR_MIN = 5
 
 
 catwise = CatalogueToMap(DataLoader('catwise', '2021').load())
@@ -24,7 +24,8 @@ cat['sigpm'] *= 1000 # mas / yr
 cat['pmsnr'] = cat['pm'] / cat['sigpm'] # sigma
 
 # snr_cut
-cut = cat['pmsnr'] > SNR_MIN
+is_highpm = ((cat['pmsnr'] >= 3) & (cat['pm'] >=10))
+cut = is_highpm
 highpm_sources = cat[cut]
 
 highpm = CatalogueToMap(highpm_sources).make_density_map(coordinate_system='galactic')
@@ -32,6 +33,7 @@ model = Dipole(highpm, likelihood='point')
 model.prior.change_prior(0, ['Uniform', 0., 0.4])
 model.run_nested_sampling()
 model.corner_plot(coordinates=['galactic'])
+plt.show()
 
 
 

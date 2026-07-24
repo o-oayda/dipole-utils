@@ -15,11 +15,11 @@ import warnings
 from dipoleska.models.multipole import Multipole
 
 
-NSIDE = 64
+NSIDE = 16
 ASKAP_UTC_OFFSET_HOURS = 8.0
 FLUX_MIN_MJY = 15
 
-data = DataLoader('racs', 'low3').load()
+data = DataLoader('racs', 'high').load()
 low3 = CatalogueToMap(data)
 # data = DataLoader('racs', 'low3-scaled').load()
 # low3_scaled = CatalogueToMap(data)
@@ -46,6 +46,7 @@ dmap = low3.make_density_map('equatorial', nside=NSIDE)
 low3.catalogue['perc_err'] = (
         low3.catalogue['E_Total_flux'] / low3.catalogue['Total_flux']
 ) * 100
+low3.catalogue['ratio'] = low3.catalogue['Total_flux'] / low3.catalogue['Peak_flux']
 fmap = low3.make_parameter_map(
     column_name='Total_flux', coordinate_system='equatorial', operation='mean',
     nside=NSIDE
@@ -86,8 +87,12 @@ psf_map = low3.make_parameter_map(
     operation='mean',
     nside=NSIDE
 )
+ratiomap = low3.make_parameter_map(column_name='ratio', coordinate_system='equatorial', nside=NSIDE)
 
-mask = Masker([dmap, fmap, start_time_map, temperature_map, pmap, rms_map, psf_map], 'equatorial')
+mask = Masker(
+    [dmap, fmap, start_time_map, temperature_map, pmap, rms_map, psf_map, ratiomap],
+    'equatorial'
+)
 mask.mask_galactic_plane(5)
 mask.mask_a_team_sources(radius_deg=3, source_names=['Cygnus A'])
 mask.mask_a_team_sources(radius_deg=2)
@@ -98,7 +103,7 @@ mask.mask_equatorial_poles(north_radius=42)
 #     low3.catalogue['RA'],
 #     low3.catalogue['Dec']
 # )
-dmap, fmap, start_time_map, temperature_map, pmap, rms_map, psf_map = mask.get_masked_density_map()
+dmap, fmap, start_time_map, temperature_map, pmap, rms_map, psf_map, ratiomap = mask.get_masked_density_map()
 
 cat = low3.get_catalogue()
 time_hours = np.asarray(cat['Start_time_hours'], dtype=float)
