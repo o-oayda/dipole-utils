@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from dipoleutils.utils import CrossMatch, DataLoader, CatalogueToMap
+from dipoleutils import RACS
 from scripts.paf_temperature_lookup import get_mean_paf_temperatures_for_mjd
 
 
@@ -43,7 +44,12 @@ def load_racs_low3_catalogue() -> Table:
     sample = CatalogueToMap(cat)
     sample.make_cut('Total_flux', 15, None)
     return sample.get_catalogue()
-    
+
+def load_mid1_catalogue() -> Table:
+    cat = RACS('mid1')
+    columns = ["Name", "RA", "Dec", "Total_flux", "SBID", "Scan_start_MJD"]
+    print(min(cat['Total_flux']))
+    return cat[columns]
 
 def load_nvss_catalogue() -> Table:
     cat = DataLoader("nvss").load(
@@ -356,6 +362,7 @@ def parse_args() -> argparse.Namespace:
 if __name__ == "__main__":
     args = parse_args()
     racs_catalogue = load_racs_low3_catalogue()
+    # racs_catalogue = load_mid1_catalogue()
     nvss_catalogue = load_nvss_catalogue()
     matched_table, temperature_bin_table, ratio_payload = build_crossmatched_flux_ratio_products(
         racs_catalogue,

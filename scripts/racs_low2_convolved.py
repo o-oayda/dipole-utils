@@ -8,12 +8,12 @@ from scripts.racs_low2 import (
 
 
 # VARIANTS = ['low3', 'low3-scaled']
-VARIANTS = ['mid1-25as']
+VARIANTS = ['mid1']
 target_to_coord = {
     'equatorial': ['C'],
     'galactic': ['C', 'G']
 }
-LIKELIHOOD = 'general_poisson_rms'
+LIKELIHOOD = 'general_poisson'
 colnames = {
     **dict.fromkeys(
         ['low3', 'low3-scaled', 'low2-25as-path', 'low2-45as-patch', 'low2-patch', 'mid1-25as'],
@@ -81,7 +81,7 @@ if __name__ == '__main__':
             masker.mask_equatorial_poles(north_radius=43)
             masker.mask_a_team_sources(radius_deg=3)
         elif variant == 'mid1':
-            masker.mask_equatorial_poles(north_radius=41)
+            masker.mask_equatorial_poles(north_radius=41, south_radius=50)
             masker.mask_slice(300, 40, 3)
         elif variant == 'mid1-25as':
             masker.mask_equatorial_poles(north_radius=61)

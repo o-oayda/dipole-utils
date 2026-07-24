@@ -1,6 +1,8 @@
+# custom
 *.DS_Store
 data/paf_temps/*
 *.codex
+scratch/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
