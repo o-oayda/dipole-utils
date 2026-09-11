@@ -34,6 +34,7 @@ fn_dict = {
         'low3': 'RACS-low3_sources.fits',
         'low3-scaled': 'RACS-low3_sources_scaled.fits',
         'mid1': 'RACS-mid1_noscale_srl.fits',
+        'mid1-withcor': 'RACS-mid1_noscale_srl-withcor.fits',
         'mid1-scaled': 'AS110_Derived_Catalogue_racs_mid_sources_v01_15372.csv',
         'mid1-25as': 'RACS-mid1_25arcsec_sources.csv',
         'high1': 'RACS-high_sources_21-01-25.fits'
